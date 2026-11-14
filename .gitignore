@@ -1,0 +1,66 @@
+# ============================================
+# SolarDB - .gitignore
+# ============================================
+
+# --- Datos crudos del dataset OpenCEM ---
+# NO subir a Git (12.6 GB total, ~1-2 GB descomprimido)
+data/*.sqlite
+data/*.sqlite.zst
+data/*.zst
+data/*.tar.zst
+data/*.zip
+data/*.csv
+data/opencem-v1.0.0-support/
+data/support/
+
+# --- Archivos temporales de migración ---
+migration/tmp/
+migration/*.csv
+migration/*.log
+
+# --- Credenciales y configuración local ---
+*.env
+.env.*
+*.credentials
+*.pgpass
+pgpass.conf
+
+# --- Sistema operativo ---
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+*.lnk
+.DS_Store
+.DS_Store?
+._*
+
+# --- IDEs y editores ---
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.bak
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+venv/
+env/
+.venv/
+
+# --- DBeaver ---
+.dbeaver/
+*.dbeaver-data-sources.xml
+
+# --- Temporales ---
+*.tmp
+*.temp
+*.log
+!migration/README.md
+!data/README.md
