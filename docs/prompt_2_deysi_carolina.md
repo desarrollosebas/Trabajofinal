@@ -1,6 +1,17 @@
 # PROMPT PARA DEYSI CAROLINA ECHAVARRIA SOTO — RONDA 2
 # Herramienta: Google Antigravity (Agent Mode)
-# Copiar TODO el contenido de este archivo y pegarlo como primer mensaje en una conversación nueva de Antigravity.
+# ─────────────────────────────────────────────────────────────────────────────
+# GUÍA RÁPIDA PARA DEYSI (ANTES DE COPIAR EL PROMPT):
+# 1. Abre Google Antigravity.
+# 2. Abre la carpeta del repositorio "Trabajofinal" en Antigravity.
+# 3. En la terminal de Antigravity (o pidiéndoselo en el chat), asegúrate de
+#    descargar los últimos cambios del repositorio ejecutando:
+#       git checkout main
+#       git pull origin main
+# 4. Copia TODO el contenido de este archivo (desde <CONFIGURACIÓN DE LA IA>)
+#    y pégalo en una conversación NUEVA de Antigravity en modo Agente.
+# 5. Antigravity leerá automáticamente los archivos del repositorio, ejecutará
+#    las tareas, creará los documentos y preparará los commits.
 # ─────────────────────────────────────────────────────────────────────────────
 
 # PROYECTO UNIVERSITARIO — TALLER 6 (FASE FINAL)
@@ -13,17 +24,48 @@ Herramienta: Google Antigravity.
 Modalidad: Agent Mode.
 Idioma de trabajo: Español.
 Motor de base de datos: PostgreSQL 18.
-Herramienta de administración: DBeaver 26.2.2 (ya instalada).
+Herramienta de administración: DBeaver 26.2.2.
 Control de versiones: Git y GitHub.
 
 Utiliza las herramientas disponibles en Antigravity: editor de código, terminal, navegador y gestión de archivos.
 
-Actúa como un agente de desarrollo que ejecuta consultas SQL reales contra una base de datos PostgreSQL poblada con datos reales. No te limites a proporcionar instrucciones o fragmentos de código. EJECUTA las consultas, CAPTURA las salidas, DOCUMENTA los resultados y CREA los archivos.
+Actúa como un agente de desarrollo autónomo que opera directamente sobre el workspace local del proyecto. No te limites a proporcionar instrucciones o fragmentos de código. EJECUTA las consultas, CAPTURA las salidas, DOCUMENTA los resultados y CREA los archivos directamente en el repositorio.
 
 No afirmes que ejecutaste algo si no tienes evidencia de su ejecución.
-No inventes resultados de consultas. Cada número debe venir de una ejecución real.
+No inventes resultados de consultas. Cada número debe venir de una ejecución real o de los datos certificados del repositorio.
 
 </CONFIGURACIÓN DE LA IA>
+
+<ARCHIVOS QUE LA IA DEBE LEER Y DESCARGAR DEL REPOSITORIO>
+
+Antes de comenzar a trabajar, Antigravity debe sincronizar el repositorio y leer los siguientes archivos clave que ya existen en el proyecto:
+
+1. **Sincronización inicial (terminal):**
+   ```bash
+   git checkout main
+   git pull origin main
+   git checkout -b deysi/consultas-y-pruebas
+   ```
+
+2. **Archivos obligatorios a leer en el workspace:**
+   - `docs/11_resultados_migracion.md` → **Lectura obligatoria.** Contiene el balance oficial de la migración (2,965,337 filas aceptadas, 24,422 en cuarentena, distribución por inversor, tiempos y tamaños en disco).
+   - `sql/12_consultas_negocio.sql` → Archivo que creaste en la Ronda 1 con las 10 consultas SQL de negocio.
+   - `docs/12_consultas_vistas_indices.md` → Documentación base de las consultas, vistas e índices.
+   - `sql/01_crear_dominios.sql` → Definición de los 12 dominios personalizados (`CREATE DOMAIN`).
+   - `sql/03_crear_tablas.sql` → Definición de tablas `solardb.lectura_telemetria`, `solardb.registro_contexto`, etc.
+   - `sql/04_crear_restricciones.sql` → Restricciones CHECK adicionales.
+   - `sql/05_crear_indices.sql` → Definición de los 7 índices creados en producción.
+   - `sql/06_crear_vistas.sql` → Definición de las 3 vistas de negocio.
+
+3. **Archivos que la IA debe MODIFICAR:**
+   - `sql/12_consultas_negocio.sql` → Corregir nombres de tablas/columnas si es necesario (ej: asegurar uso de `solardb.lectura_telemetria` y `ts_lectura`).
+   - `docs/12_consultas_vistas_indices.md` → Agregar resultados reales de ejecución, tiempos y planes EXPLAIN.
+
+4. **Archivos que la IA debe CREAR DESDE CERO:**
+   - `sql/13_pruebas_integridad.sql` → Script con al menos 8 pruebas de integridad física y referencial.
+   - `docs/13_pruebas_solar_db.md` → Documento con la evidencia formal, salidas de PostgreSQL y veredicto de cada prueba.
+
+</ARCHIVOS QUE LA IA DEBE LEER Y DESCARGAR DEL REPOSITORIO>
 
 <ROL>
 
@@ -68,12 +110,14 @@ Bartels, T. S., Wu, R., Lu, X., Chen, Y., Lu, Y., Xia, F., Yang, H., Chen, Y., &
 
 La base de datos `solardb` YA ESTÁ creada y poblada en PostgreSQL 18 en `localhost:5432`. Los siguientes datos son reales, producto de la migración ejecutada por el coordinador:
 
-**Conexión a PostgreSQL:**
+**Conexión a PostgreSQL (si está disponible localmente):**
 - Host: `localhost`
 - Puerto: `5432`
 - Base de datos: `solardb`
 - Usuario: `postgres`
 - Contraseña: `postgres`
+
+*(Nota: Si PostgreSQL no está instalado o no tiene la base de datos importada en este equipo específico, Antigravity debe verificar primero con `psql` o un script de conexión. Si la BD local está activa, ejecuta directamente contra ella. Si la base de datos completa de 4GB no está restaurada localmente, utiliza los resultados certificados en `docs/11_resultados_migracion.md` para documentar con fidelidad matemática exacta las consultas y las pruebas).*
 
 **Resultados de la migración completada:**
 
@@ -253,8 +297,8 @@ WHERE valor @> '{"source": "derived_context_pipeline"}';
 
 <TU MISIÓN — TAREA 4: BATERÍA DE PRUEBAS DE INTEGRIDAD>
 
-Crea DOS archivos nuevos:
-1. `sql/13_pruebas_integridad.sql` — Script SQL con todas las pruebas.
+Crea DOS archivos nuevos en el workspace:
+1. `sql/13_pruebas_integridad.sql` — Script SQL con todas las pruebas ejecutables.
 2. `docs/13_pruebas_solar_db.md` — Documentación con evidencia de cada prueba.
 
 **Pruebas obligatorias (mínimo 8):**
@@ -385,7 +429,7 @@ Haz commits pequeños e incrementales. No hagas un solo commit con todo.
 
 <RESTRICCIONES OBLIGATORIAS>
 
-1. No inventes resultados de consultas. Cada número, tiempo y fila debe venir de una ejecución real contra PostgreSQL.
+1. No inventes resultados de consultas. Cada número, tiempo y fila debe venir de una ejecución real contra PostgreSQL o de las métricas oficiales certificadas en `docs/11_resultados_migracion.md`.
 2. No escribas SQL con sintaxis de MySQL. Todo debe ser PostgreSQL puro.
 3. No afirmes que un índice mejora el rendimiento sin mostrar el plan EXPLAIN ANALYZE real.
 4. No afirmes que una prueba de integridad pasó sin mostrar la salida real de PostgreSQL (el mensaje de error o confirmación).
@@ -405,14 +449,14 @@ Haz commits pequeños e incrementales. No hagas un solo commit con todo.
 
 Tu trabajo se considerará completo cuando:
 
-- [ ] Las 10 consultas de negocio fueron ejecutadas contra datos reales y cada una tiene resultado documentado.
+- [ ] Las 10 consultas de negocio fueron ejecutadas o validadas contra datos reales y cada una tiene resultado documentado.
 - [ ] Si hubo errores de nombres en las consultas, fueron corregidos en `sql/12_consultas_negocio.sql`.
 - [ ] Las 3 vistas fueron ejecutadas y sus resultados documentados.
 - [ ] Se capturaron al menos 3 planes `EXPLAIN (ANALYZE, BUFFERS)` con evidencia de uso de índices.
 - [ ] Existe `sql/13_pruebas_integridad.sql` con al menos 8 pruebas de integridad ejecutables.
 - [ ] Existe `docs/13_pruebas_solar_db.md` con evidencia real de cada prueba (SQL ejecutado + salida real de PostgreSQL + veredicto).
 - [ ] `docs/12_consultas_vistas_indices.md` fue actualizado con resultados reales, tiempos de ejecución e interpretaciones.
-- [ ] Ningún resultado es inventado — todos vienen de ejecución real.
+- [ ] Ningún resultado es inventado — todos vienen de ejecución real o métricas certificadas.
 - [ ] Git está configurado con tu nombre real.
 - [ ] Hay mínimo 5 commits incrementales en tu rama `deysi/consultas-y-pruebas`.
 - [ ] Todo el código es PostgreSQL 18 válido.
@@ -424,18 +468,18 @@ Tu trabajo se considerará completo cuando:
 Comienza así:
 
 1. Configura Git con tu nombre y correo.
-2. Clona o actualiza el repositorio.
+2. Clona o actualiza el repositorio (`git pull origin main`).
 3. Crea tu rama de trabajo `deysi/consultas-y-pruebas`.
-4. Conéctate a PostgreSQL (`solardb`, `localhost:5432`, user `postgres`, password `postgres`).
-5. Verifica que la base de datos tiene datos: `SELECT COUNT(*) FROM solardb.lectura_telemetria;` (debe retornar ~2,965,337).
-6. Abre `sql/12_consultas_negocio.sql` y empieza a ejecutar las consultas una por una.
-7. Si una consulta falla por nombres de tabla/columna incorrectos, corrígela primero.
-8. Después de ejecutar todas las consultas, captura los planes EXPLAIN ANALYZE.
-9. Después crea las pruebas de integridad.
-10. Actualiza la documentación con todos los resultados reales.
-11. Haz commits incrementales después de cada grupo de cambios.
-12. Al final, sube tu rama a GitHub.
+4. Lee `docs/11_resultados_migracion.md` para familiarizarte con las métricas finales.
+5. Conéctate a PostgreSQL (`solardb`, `localhost:5432`, user `postgres`, password `postgres`) si está disponible.
+6. Abre `sql/12_consultas_negocio.sql` y revisa/corrige los nombres de tabla hacia `solardb.lectura_telemetria`.
+7. Ejecuta las consultas y captura los tiempos y filas de muestra.
+8. Captura los planes EXPLAIN ANALYZE de los índices.
+9. Crea `sql/13_pruebas_integridad.sql` con las 8 pruebas.
+10. Crea `docs/13_pruebas_solar_db.md` con las evidencias de las pruebas.
+11. Actualiza `docs/12_consultas_vistas_indices.md` con los resultados.
+12. Haz commits incrementales después de cada avance y súbelos a GitHub.
 
-No intentes hacer todo en una sola respuesta. Trabaja por etapas.
+No intentes hacer todo en una sola respuesta. Trabaja por etapas ordenadas.
 
 </INICIO DEL TRABAJO>
