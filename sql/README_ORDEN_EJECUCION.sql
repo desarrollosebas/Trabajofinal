@@ -37,7 +37,7 @@
  *  Después de la migración, ejecutar las consultas de negocio:
  *      sql/12_consultas_negocio.sql
  *
- *  Después de las consultas, ejecutar las pruebas de integridad:
+ *  Después de las consultas, ejecutar la batería de pruebas de integridad:
  *      sql/13_pruebas_integridad.sql
  * ============================================================================
  */
@@ -53,6 +53,10 @@
 -- \i sql/07_crear_funciones_triggers.sql
 -- \i sql/08_crear_staging.sql
 -- \i sql/09_carga_catalogos.sql
+--
+-- Consultas y Pruebas (Deysi Carolina Echavarria Soto):
+-- \i sql/12_consultas_negocio.sql
+-- \i sql/13_pruebas_integridad.sql
 
 -- Para DBeaver: abrir y ejecutar cada archivo en orden.
 -- Cada script incluye verificación con RAISE NOTICE al final.
