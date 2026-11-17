@@ -329,11 +329,11 @@ BEGIN
     RAISE NOTICE '── Paso 3: Envío a cuarentena ──';
     v_cuarentena := staging.fn_mover_rechazadas_a_cuarentena(p_lote_id);
 
-    -- Paso 4: Actualizar lote_carga
+    -- Paso 4: Actualizar lote_carga (filas_rechazadas = v_rechazadas filas unicas)
     UPDATE calidad.lote_carga
     SET filas_leidas     = v_total_staging,
         filas_aceptadas  = v_insertadas,
-        filas_rechazadas = v_cuarentena,
+        filas_rechazadas = v_rechazadas,
         fecha_fin        = now(),
         estado           = 'COMPLETADO'
     WHERE lote_id = p_lote_id;

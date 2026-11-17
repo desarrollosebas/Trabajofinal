@@ -69,7 +69,7 @@ CREATE TABLE calidad.regla_calidad (
     regla_id        SMALLINT  GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     codigo_regla    VARCHAR(30)   NOT NULL UNIQUE,
     descripcion     TEXT          NOT NULL,
-    variable_afectada VARCHAR(30),
+    variable_afectada VARCHAR(60),
     severidad       VARCHAR(12)   NOT NULL
         CHECK (severidad IN ('INFO', 'ADVERTENCIA', 'ERROR')),
     accion          VARCHAR(12)   NOT NULL
@@ -183,7 +183,7 @@ CREATE TABLE solardb.lectura_telemetria (
     sumloadpercent  solardb.dom_porcentaje_carga,   -- %  (carga total)
 
     -- ── Potencia generada (fase A) ──────────────────────────────────────
-    generatedpowerp_a  solardb.dom_potencia_activa_no_neg,  -- W  (P generada)
+    generatedpowerp_a  solardb.dom_potencia_activa,          -- W  (P generada, con signo: negativo = consumo auxiliar)
     generatedpowers_a  solardb.dom_potencia_aparente,       -- VA (S generada)
     generatedpowerq_a  solardb.dom_potencia_reactiva,       -- VAR(Q generada)
 
