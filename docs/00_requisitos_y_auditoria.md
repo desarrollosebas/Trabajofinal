@@ -119,7 +119,7 @@ Extraídos textualmente del documento `BDI_Taller6_Microrred_PostgreSQL.docx`:
 > [!IMPORTANT]
 > La guía del profesor establece una "línea de profundización" pero **no se encontró un documento separado** que desarrolle las condiciones particulares de SolarDB. Los siguientes requisitos se derivan de:
 > 1. El nombre de la línea: "Integridad y calidad de datos con restricciones, dominios y tablas de cuarentena".
-> 2. La solicitud del estudiante (prompt del usuario).
+> 2. La formulación del alcance del proyecto.
 > 3. Buenas prácticas de calidad de datos en bases de datos.
 
 ### Propuesta técnica provisional para SolarDB

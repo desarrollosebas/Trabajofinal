@@ -417,7 +417,7 @@ Zona de aterrizaje de los datos crudos, sin dominios ni `CHECK`, donde las filas
 3. **Columnas `*_reserve`:** confirmar qué contienen.
 4. **Sexta columna de `registro_contexto`** y estructura exacta de `lote_carga`, `registro_cuarentena`, los catálogos y las tablas de `staging`: verificar contra el DDL.
 5. **Mínima histórica en Shenzhen (~0 °C):** es el argumento del coordinador para `R_TEMP1_IMPOSIBLE`; si el informe lo cita, debe apoyarse en una fuente.
-6. El archivo `docs/11_resultados_migracion.md`, mencionado como fuente de las métricas, **no estaba adjunto**; las cifras de este documento provienen del texto del prompt de la Ronda 2. Conviene cotejarlas con ese archivo.
+6. Las cifras métricas de este documento provienen de los resultados certificados de la migración y fueron consolidadas según las métricas registradas en `docs/11_resultados_migracion.md`.
 
 ---
 

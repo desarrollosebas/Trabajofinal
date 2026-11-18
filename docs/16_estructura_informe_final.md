@@ -7,7 +7,7 @@
 |---|---|
 | **Documento** | `docs/16_estructura_informe_final.md` |
 | **Título** | Estructura y guía de compilación del informe final PDF |
-| **Versión** | Ronda 2 |
+| **Versión** | 2.0 — Final |
 | **Autor** | Jose Miguel Sosa Cartagena |
 | **Equipo** | Juan Sebastian Raigosa Gil, Jose Miguel Sosa Cartagena, Deysi Carolina Echavarria Soto |
 | **Motor / herramienta** | PostgreSQL 18 / DBeaver 26.2.2 |

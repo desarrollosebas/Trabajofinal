@@ -7,7 +7,7 @@
 |---|---|
 | **Documento** | `docs/14_seguridad_y_privacidad.md` |
 | **Título** | Análisis de seguridad y privacidad de datos personales (Ley 1581 de 2012) |
-| **Versión** | Ronda 2 — actualizada con métricas reales post-migración |
+| **Versión** | 2.0 — Actualizada con métricas reales post-migración |
 | **Autor** | Jose Miguel Sosa Cartagena |
 | **Equipo** | Juan Sebastian Raigosa Gil, Jose Miguel Sosa Cartagena, Deysi Carolina Echavarria Soto |
 | **Motor / herramienta** | PostgreSQL 18 / DBeaver 26.2.2 |

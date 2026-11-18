@@ -7,7 +7,7 @@
 |---|---|
 | **Documento** | `docs/15_guia_sustentacion.md` |
 | **Título** | Guía de sustentación oral con métricas reales post-migración |
-| **Versión** | Ronda 2 — actualizada con datos verificados |
+| **Versión** | 2.0 — Actualizada con datos verificados |
 | **Autor** | Jose Miguel Sosa Cartagena |
 | **Equipo** | Juan Sebastian Raigosa Gil, Jose Miguel Sosa Cartagena, Deysi Carolina Echavarria Soto |
 | **Motor / herramienta** | PostgreSQL 18 / DBeaver 26.2.2 |
