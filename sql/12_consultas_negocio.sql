@@ -43,13 +43,13 @@ WITH lecturas_con_intervalo AS (
 SELECT
     inversor_id,
     date_trunc('day', ts_lectura)::DATE                       AS dia,
-    ROUND(SUM(COALESCE(pv1power, 0)     * COALESCE(intervalo_s, 12.6))
-          / 3600000.0, 3)                                     AS energia_solar_kwh,
-    ROUND(SUM(COALESCE(outsumw, 0)       * COALESCE(intervalo_s, 12.6))
-          / 3600000.0, 3)                                     AS energia_carga_kwh,
-    ROUND(SUM(GREATEST(COALESCE(gridpowerw_a, 0), 0)
+    ROUND((SUM(COALESCE(pv1power, 0)     * COALESCE(intervalo_s, 12.6))
+          / 3600000.0)::NUMERIC, 3)                                     AS energia_solar_kwh,
+    ROUND((SUM(COALESCE(outsumw, 0)       * COALESCE(intervalo_s, 12.6))
+          / 3600000.0)::NUMERIC, 3)                                     AS energia_carga_kwh,
+    ROUND((SUM(GREATEST(COALESCE(gridpowerw_a, 0), 0)
                                           * COALESCE(intervalo_s, 12.6))
-          / 3600000.0, 3)                                     AS energia_red_kwh
+          / 3600000.0)::NUMERIC, 3)                                     AS energia_red_kwh
 FROM lecturas_con_intervalo
 WHERE intervalo_s IS NOT NULL
   AND intervalo_s BETWEEN 1 AND 120  -- Descarta gaps >2 min (apagones/mantenimiento)
@@ -74,13 +74,13 @@ WITH lecturas_con_intervalo AS (
 SELECT
     inversor_id,
     date_trunc('month', ts_lectura)::DATE                     AS mes,
-    ROUND(SUM(COALESCE(pv1power, 0)     * COALESCE(intervalo_s, 12.6))
-          / 3600000.0, 2)                                     AS energia_solar_kwh,
-    ROUND(SUM(COALESCE(outsumw, 0)       * COALESCE(intervalo_s, 12.6))
-          / 3600000.0, 2)                                     AS energia_carga_kwh,
-    ROUND(SUM(GREATEST(COALESCE(gridpowerw_a, 0), 0)
+    ROUND((SUM(COALESCE(pv1power, 0)     * COALESCE(intervalo_s, 12.6))
+          / 3600000.0)::NUMERIC, 2)                                     AS energia_solar_kwh,
+    ROUND((SUM(COALESCE(outsumw, 0)       * COALESCE(intervalo_s, 12.6))
+          / 3600000.0)::NUMERIC, 2)                                     AS energia_carga_kwh,
+    ROUND((SUM(GREATEST(COALESCE(gridpowerw_a, 0), 0)
                                           * COALESCE(intervalo_s, 12.6))
-          / 3600000.0, 2)                                     AS energia_red_kwh
+          / 3600000.0)::NUMERIC, 2)                                     AS energia_red_kwh
 FROM lecturas_con_intervalo
 WHERE intervalo_s IS NOT NULL
   AND intervalo_s BETWEEN 1 AND 120
@@ -104,7 +104,7 @@ WITH promedio_por_hora AS (
         lt.inversor_id,
         date_trunc('month', lt.ts_lectura)::DATE                  AS mes,
         EXTRACT(HOUR FROM lt.ts_lectura AT TIME ZONE 'Asia/Shanghai') AS hora_local,
-        ROUND(AVG(COALESCE(lt.pv1power, 0)), 2)                   AS potencia_solar_promedio_w,
+        ROUND(AVG(COALESCE(lt.pv1power, 0))::NUMERIC, 2)          AS potencia_solar_promedio_w,
         COUNT(*)                                                  AS num_lecturas
     FROM solardb.lectura_telemetria lt
     GROUP BY lt.inversor_id, mes, hora_local
@@ -148,16 +148,16 @@ SELECT
     s.nombre_subsistema                                    AS subsistema,
     i.fabricante,
     COUNT(lt.ts_lectura)                                   AS total_lecturas,
-    ROUND(AVG(COALESCE(lt.outsumw, 0)), 2)                 AS potencia_salida_promedio_w,
+    ROUND(AVG(COALESCE(lt.outsumw, 0))::NUMERIC, 2)        AS potencia_salida_promedio_w,
     MAX(lt.outsumw)                                        AS potencia_salida_maxima_w,
-    ROUND(AVG(COALESCE(lt.pv1power, 0)), 2)                AS potencia_solar_promedio_w,
-    ROUND(AVG(COALESCE(lt.battsoc, 0)), 1)                 AS soc_promedio_pct,
+    ROUND(AVG(COALESCE(lt.pv1power, 0))::NUMERIC, 2)       AS potencia_solar_promedio_w,
+    ROUND(AVG(COALESCE(lt.battsoc, 0))::NUMERIC, 1)        AS soc_promedio_pct,
     MIN(lt.battsoc)                                        AS soc_minimo_pct,
-    ROUND(AVG(COALESCE(lt.temper1, 0)), 1)                 AS temp_promedio_c,
+    ROUND(AVG(COALESCE(lt.temper1, 0))::NUMERIC, 1)        AS temp_promedio_c,
     -- Factor de carga = P_promedio / P_nominal
     ROUND(
-        AVG(COALESCE(lt.outsumw, 0))::NUMERIC
-        / NULLIF(i.potencia_nominal_w, 0) * 100, 2
+        (AVG(COALESCE(lt.outsumw, 0))::NUMERIC
+        / NULLIF(i.potencia_nominal_w, 0) * 100)::NUMERIC, 2
     )                                                      AS factor_carga_pct
 FROM solardb.lectura_telemetria lt
 INNER JOIN solardb.dim_inversor i   ON lt.inversor_id = i.inversor_id
