@@ -1,336 +1,381 @@
-# Guía de Sustentación — SolarDB
+**INSTITUCIÓN UNIVERSITARIA PASCUAL BRAVO**
+**Bases de Datos I — Grupo 811 — Semestre 2026-II**
+**Docente:** Ramiro Grisales Montoya
+**Proyecto:** Taller 6 (Fase Final) — SolarDB: Integridad y calidad de datos en una microrred híbrida mediante PostgreSQL
 
-| | |
+| Campo | Detalle |
 |---|---|
-| **Proyecto** | Taller 6 — Bases de Datos I. SolarDB: integridad y calidad de datos en una microrred híbrida mediante PostgreSQL |
-| **Institución / grupo** | Institución Universitaria Pascual Bravo, grupo 811, semestre 2026-II |
-| **Docente** | Ramiro Grisales Montoya |
-| **Integrante responsable** | Jose Miguel Sosa Cartagena (diccionario de datos, diseño físico, privacidad y documento final) |
-| **Fecha** | 15 de noviembre de 2026 |
-| **Dataset** | OpenCEM v1.0.0 (DOI: 10.5281/zenodo.21436223) |
-| **Documentos relacionados** | `08_diccionario_datos.md`, `09_diseno_fisico.md`, `14_seguridad_y_privacidad.md` |
-
-## Cómo usar esta guía
-
-1. Cada pregunta trae una **respuesta corta** (lo que se dice en voz alta, en pocas frases) y un **detalle técnico** por si el profesor profundiza.
-2. Cada pregunta indica **quién responde** según el rol: **JS** = Juan Sebastian Raigosa Gil (arquitectura, migración, DDL), **JM** = Jose Miguel Sosa Cartagena (diccionario, diseño físico, privacidad), **DE** = Deysi Carolina Echavarria Soto (modelo conceptual y lógico, 3FN, consultas de negocio). Todos deben poder responder todas las preguntas.
-3. Las cifras que aparecen son las **verificadas por el coordinador** en las Fases 0 y 1. Lo que depende de la implementación final está marcado como **«pendiente de confirmación»**: **no se debe afirmar en la sustentación hasta tener el dato real**.
-4. Regla de oro: si no se sabe una cifra, se dice cómo se obtiene (la consulta o la tabla donde está), no se improvisa.
+| **Documento** | `docs/15_guia_sustentacion.md` |
+| **Título** | Guía de sustentación oral con métricas reales post-migración |
+| **Versión** | Ronda 2 — actualizada con datos verificados |
+| **Autor** | Jose Miguel Sosa Cartagena |
+| **Equipo** | Juan Sebastian Raigosa Gil, Jose Miguel Sosa Cartagena, Deysi Carolina Echavarria Soto |
+| **Motor / herramienta** | PostgreSQL 18 / DBeaver 26.2.2 |
+| **Repositorio** | https://github.com/desarrollosebas/Trabajofinal |
+| **Fecha** | 17 de noviembre de 2026 |
 
 ---
 
-## A. Preguntas difíciles y cómo responderlas
+# 15. Guía de sustentación
 
-### A.1 Sobre el dataset
+## 15.1 Cómo usar esta guía
 
-**1. ¿Qué es OpenCEM y de dónde vienen los datos?** *(JS / JM)*
-- **Respuesta corta:** OpenCEM v1.0.0 es un dataset público de una microrred híbrida (paneles solares, baterías de litio e inversores conectados a la red eléctrica) de un campus universitario en Shenzhen, China (CUHK-Shenzhen). Está publicado en Zenodo (DOI 10.5281/zenodo.21436223) por Bartels et al. (2026).
-- **Detalle técnico:** son 2 subsistemas independientes. Cada uno tiene 26 paneles de 480 W, un banco de baterías LiFePO4 de ~200 Ah (51,2 V nominales), un inversor híbrido y conexión a la red (220/230 V, 50 Hz). El inversor 1 alimenta estaciones de cómputo de investigación (GPU/CPU) y el inversor 2, sistemas de climatización (HVAC). Se muestrea cada ~12,6 segundos por Modbus/RS485.
+1. Memoriza la **hoja de cifras** (15.2) y el **discurso de apertura** (15.3).
+2. Practica el **guion de demostración en DBeaver** (15.5) al menos dos veces con la conexión real.
+3. Estudia las **32 preguntas difíciles** (15.4). No memorices las respuestas palabra por palabra; entiende el argumento de cada una.
+4. Revisa la **estructura del PDF final** (15.6) para saber en qué capítulo está cada tema.
 
-**2. ¿Qué representa exactamente una lectura?** *(JS / DE)*
-- **Respuesta corta:** una fila de `analog_measurements` es una «fotografía» de un inversor en un instante: voltajes, corrientes, potencias, temperaturas y porcentajes medidos al mismo tiempo.
-- **Detalle técnico:** se identifica por el inversor (1 o 2) y el instante (`read_ts`, un timestamp Unix fraccionario en UTC). La tabla original tiene 44 columnas; SolarDB usa 30 variables físicas (véase el diccionario de datos).
+Regla de oro: si no sabes algo, dilo con honestidad y explica cómo lo verificarías. Inventar una respuesta es peor que reconocer un límite.
 
-**3. ¿Cuántas lecturas hay y cómo verificaron que son reales?** *(JS)*
-- **Respuesta corta:** hay **2.989.759** filas en `analog_measurements`. Se contaron directamente sobre la base SQLite descomprimida (4,13 GB) y las unidades se contrastaron con el `column_dictionary.json` de los autores.
-- **Detalle técnico:** el repositorio incluye un manifiesto oficial de sumas de verificación SHA-256 del dataset, que permite comprobar que los archivos no se alteraron. Los conteos de las demás tablas (por ejemplo, `context` con 25.178 filas) también son verificados.
+## 15.2 Hoja de cifras (memorizar)
 
-**4. ¿Qué problemas de calidad encontraron?** *(JS / DE)*
-- **Respuesta corta:** cuatro hallazgos.
+| Indicador | Valor |
+|---|---|
+| Filas leídas de telemetría (SQLite, tabla `analog_measurements`) | **2,989,759** |
+| Aceptadas en producción (`solardb.lectura_telemetria`) | **2,965,337** (99.18%) |
+| En cuarentena (`calidad.registro_cuarentena`) | **24,422** (0.82%) |
+| Cuadratura | 2,965,337 + 24,422 = **2,989,759** exacta |
+| Meta del profesor | ≥ 1,000,000 lecturas → superada (**298.9%**) |
+| Contexto operativo (`solardb.registro_contexto`) | **25,178** (100%, 0 rechazadas) |
+| Cuarentena `R_P_MAYOR_S` | **24,375** |
+| Cuarentena `R_TEMP1_IMPOSIBLE` | **38** (temper1 = -20.3 °C) |
+| Cuarentena `R_LINEPOWERVA_NEG` | **8** |
+| Cuarentena `R_LINECURRA_NEG` | **1** |
+| Inversor 1 (Cómputo) | **1,594,461** filas (53.77%), ~1 año |
+| Inversor 2 (HVAC) | **1,370,876** filas (46.23%), ~11 meses |
+| Cadencia mediana de muestreo | **12.58 s** |
+| Tamaño `lectura_telemetria` | **3,824 MB** (3,440 datos + 384 índices) |
+| Tamaño `registro_cuarentena` | **34 MB** |
+| Tamaño `registro_contexto` | **26 MB** |
+| Total SolarDB | **~3.88 GB** |
+| Esquemas | 3: `solardb`, `staging`, `calidad` |
+| Dominios personalizados | **12** |
+| Columnas de `lectura_telemetria` | **46** (38 de medición + 4 JSONB reservadas) |
+| Reglas de calidad activas | **6** |
+| Lotes auditados | 2: lote 4 (telemetría) y lote 6 (contexto) |
+| Registros con datos personales críticos | **204** (`wsl_bash_history`) |
+| Dataset | OpenCEM v1.0.0 (DOI 10.5281/zenodo.21436223) |
 
-| Hallazgo | Filas | Interpretación |
-|---|---:|---|
-| Valores nulos por *timeouts* de Modbus | ≈ 58.000–60.000 (~2 %) | Dato faltante legítimo: se acepta como `NULL`. |
-| `temper1 = -20,3 °C` | 38 | Error de sensor: se envía a cuarentena. |
-| Potencia activa P mayor que la aparente S | 3.811 | Violación de la ley de potencia en CA: se envía a cuarentena. |
-| Frecuencia = 0 Hz | 342.592 | **No es un error:** es modo isla legítimo. |
+Truco de memoria: **2.99 M leídas = 2.97 M buenas + 24 mil aisladas; casi todo (24,375) es una sola regla: P > S.**
 
-- **Detalle técnico:** lo importante es distinguir un **error** de un **dato inusual pero legítimo**. Rechazar los 342.592 registros de 0 Hz habría sido un error de diseño.
+## 15.3 Discurso de apertura (≈ 90 segundos)
 
-### A.2 Sobre el modelo
+> "SolarDB es una base de datos en PostgreSQL 18 para la telemetría de una microrred híbrida, a partir del dataset OpenCEM. Nuestra línea de profundización es la **integridad y calidad de datos con restricciones, dominios y tablas de cuarentena**.
+>
+> Leímos **2,989,759** lecturas de dos inversores. **2,965,337** (99.18%) pasaron todas las reglas y están en producción; **24,422** (0.82%) violaban alguna regla física y se aislaron en una tabla de cuarentena, sin perderlas: se guardan completas en JSONB con estado PENDIENTE. La suma cuadra exactamente.
+>
+> Usamos **tres esquemas**: `staging` para la carga temporal, `calidad` para reglas, lotes y cuarentena, y `solardb` para producción. Declaramos **12 dominios** con `CREATE DOMAIN` para que cada magnitud física, como voltaje, porcentaje o frecuencia, lleve su restricción dentro del tipo.
+>
+> Además migramos **25,178** registros de contexto operativo y marcamos con `contiene_datos_personales` los que pueden tener datos personales, en cumplimiento de la Ley 1581 de 2012. Todo ocupa unos **3.88 GB**."
 
-**5. ¿Por qué eligieron formato ancho/largo para las lecturas?** *(DE / JS)*
-- **Respuesta corta:** el diseño propuesto usa **formato ancho** (una columna por variable), igual que el origen. **Pendiente de confirmación por el coordinador.**
-- **Detalle técnico:**
-  - *Ancho:* una fila por instante e inversor; las consultas que comparan varias variables (por ejemplo, P y S) son sencillas y no requieren uniones; es el formato del origen, lo que simplifica la migración y la verificación de conteos. Cada columna puede tener su propio tipo y su propio dominio con CHECK.
-  - *Largo* (`lectura_id, variable_id, valor`): agregar una variable no cambia la estructura, pero multiplica las filas por ~30 (≈ 90 millones), y todos los valores comparten el mismo tipo, lo que impide usar dominios específicos por magnitud.
-  - El formato ancho se apoya en que las variables son **fijas y conocidas** (30).
+## 15.4 Preguntas difíciles del profesor y respuestas
 
-**6. ¿Cuáles son las entidades principales y cómo se relacionan?** *(DE)*
-- **Respuesta corta:** un sitio tiene subsistemas; cada subsistema tiene un inversor; cada inversor genera lecturas. Las variables físicas y las unidades están en catálogos, y las lecturas se auditan por lote de carga.
-- **Detalle técnico (cardinalidades propuestas, pendientes de confirmación):**
-  - `dim_sitio` 1 — N `dim_subsistema`.
-  - `dim_subsistema` 1 — 1 `dim_inversor`.
-  - `dim_inversor` 1 — N `lectura_telemetria`.
-  - `cat_unidad_medida` 1 — N `cat_variable_fisica`.
-  - `lote_carga` 1 — N `lectura_telemetria`, `registro_contexto` y `registro_cuarentena`.
-  - `regla_calidad` 1 — N `registro_cuarentena`.
+### A. Arquitectura y diseño
 
-**7. ¿Qué dependencias funcionales identificaron?** *(DE)*
-- **Respuesta corta:** las principales son estas (propuestas, pendientes de confirmación por DE):
-  - `inversor_id → subsistema_id`
-  - `subsistema_id → sitio_id, carga_alimentada, num_paneles, potencia_panel_w, ...`
-  - `variable_id → nombre_columna, unidad_id`
-  - `(inversor_id, ts_lectura) → todas las variables medidas`
-- **Detalle técnico:** de ahí que las características del subsistema vivan en `dim_subsistema` y no se repitan en cada lectura.
+**1. ¿Por qué usar tres esquemas y no todo en `public`?**
+Cada esquema tiene una responsabilidad distinta: `staging` recibe datos crudos y desechables, `calidad` guarda reglas, auditoría de lotes y cuarentena, y `solardb` contiene solo datos que ya pasaron las reglas. Esto permite dar permisos distintos por esquema (por ejemplo, que un analista lea `solardb` pero no `staging`), evita mezclar datos validados con no validados y hace que el nombre de cada objeto indique su confiabilidad.
 
-**8. ¿Cómo demuestran que el diseño está en 3FN?** *(DE)*
-- **Respuesta corta:** una tabla está en 3FN si es 1FN (valores atómicos), 2FN (ningún atributo depende de solo una parte de la clave) y 3FN (ningún atributo depende de otro atributo que no sea clave).
-- **Detalle técnico:** en `lectura_telemetria` cada medición depende de la lectura completa (inversor + instante). Los atributos del inversor, del subsistema y del sitio, que dependerían de `inversor_id` (dependencia transitiva), se sacaron a tablas aparte. **La demostración formal con la lista de dependencias es del modelo lógico de DE; se debe revisar su documento antes de sustentar.**
+**2. ¿Por qué dominios (`CREATE DOMAIN`) y no simples CHECK en cada columna?**
+Porque una regla física se define una vez y se reutiliza. `dom_voltaje` (`VALUE >= 0`) se aplica a seis columnas (battvolt, pv1volt, outvolta, linevolta, busvoltp, busvoltn). Si la regla cambia, se modifica en un solo lugar en vez de en seis CHECK repetidos. Además, el dominio documenta la intención ("esto es un voltaje") y evita errores de copiar y pegar. Un CHECK por columna funciona, pero escala mal y es fácil que quede inconsistente.
 
-**9. ¿Hay alguna desnormalización intencional? ¿Por qué?** *(DE / JM)*
-- **Respuesta corta:** posiblemente dos decisiones, **pendientes de confirmación**:
-  1. El **formato ancho** de la tabla de lecturas (pregunta 5). No viola la 1FN porque los valores son atómicos.
-  2. La columna `fuente_contexto` de `registro_contexto`, que **repite** el dato `valor->>'source'` del JSON. Es un dato derivado guardado de forma explícita para filtrar rápido con un índice B-tree y facilitar las consultas.
-- **Detalle técnico:** toda desnormalización debe justificarse por rendimiento o simplicidad y declararse. Si ninguna se aplicó realmente, la respuesta honesta es «no hay desnormalización más allá del formato ancho».
+**3. ¿Por qué 12 dominios? ¿Por qué algunos no tienen CHECK?**
+Se separan por semántica física. Los dominios con signo no pueden restringirse a ≥ 0: `dom_corriente` (battcurr, positiva al cargar y negativa al descargar la batería), `dom_potencia_activa`, `dom_potencia_reactiva` (la reactiva puede ser inductiva o capacitiva) y `dom_temperatura`. Los demás tienen CHECK: ≥ 0 para voltaje, corriente no negativa, potencia aparente, frecuencia y resistencia de aislamiento; 0 a 100 para porcentaje; 0 a 110 para porcentaje de carga (permite sobrecarga transitoria). Son 8 con CHECK y 4 sin CHECK.
 
-### A.3 Sobre SolarDB (línea de profundización)
+**4. ¿Por qué `dom_corriente_no_neg` y `dom_corriente` son dos dominios distintos?**
+Porque la corriente de batería es bidireccional, pero las corrientes de red, del inversor y de salida del cargador que listamos se definen como magnitudes no negativas en este sensor. Mezclarlas en un solo dominio obligaría a eliminar el CHECK y perder protección en siete columnas.
 
-**10. ¿Qué es un `CREATE DOMAIN` y para qué lo usan?** *(JS / JM)*
-- **Respuesta corta:** es un tipo de dato personalizado, basado en un tipo existente, con restricciones incluidas. Lo usamos para definir **una vez** las reglas de una magnitud física y reutilizarlas en muchas columnas.
-- **Detalle técnico:** por ejemplo, `dom_voltaje` (tipo `DOUBLE PRECISION` con `CHECK (VALUE >= 0)`) se aplica a `battvolt`, `pv1volt`, `outvolta`, `linevolta`, `busvoltp` y `busvoltn`. Si la regla cambia, se modifica en un solo lugar.
+**5. ¿Por qué `lectura_id` es BIGINT identity si hay una clave natural `(inversor_id, ts_lectura)`?**
+La clave natural es única y se declara con UNIQUE para impedir duplicados, pero usarla como PK obligaría a que cualquier tabla que la referencie repita dos columnas. Una clave sustituta `BIGINT GENERATED ALWAYS AS IDENTITY` es compacta y estable. Elegimos BIGINT en lugar de INTEGER aunque hoy hay 2,965,337 filas (cabrían en INTEGER) porque telemetría crece continuamente con cadencia de ~12.58 s; el costo adicional es de 4 bytes por fila, del orden de 12 MB en total, un precio bajo frente a una migración de tipo futura.
 
-**11. ¿Cuál es la diferencia entre un CHECK a nivel de columna y un DOMAIN?** *(JM)*
-- **Respuesta corta:** el CHECK de columna vale solo para esa columna de esa tabla. El dominio es un objeto reutilizable que lleva su regla a todas las columnas que lo usen.
-- **Detalle técnico:** ventajas del dominio: no se repite la regla (menos errores), se cambia con `ALTER DOMAIN` y documenta el significado de la magnitud. Ventaja del CHECK de columna: puede comparar **varias columnas** de la misma fila (por ejemplo, `outw_a <= outva_a`), cosa que un dominio no puede hacer porque solo ve su propio valor. Por eso la regla P ≤ S no es un dominio.
+**6. ¿Por qué DOUBLE PRECISION y no NUMERIC en voltajes, corrientes y temperaturas?**
+NUMERIC es de precisión exacta y se justifica en dinero o cuando se exige exactitud decimal. Una medida de sensor ya es una aproximación con error de medición; el exceso de precisión de NUMERIC no aporta exactitud real, ocupa más espacio y es más lento en cálculos. DOUBLE PRECISION (8 bytes, punto flotante) es el tipo natural para magnitudes físicas medidas. Para potencias en vatios enteros usamos INTEGER, y para porcentajes SMALLINT.
 
-**12. ¿Qué es una tabla de staging y por qué se necesita?** *(JS)*
-- **Respuesta corta:** es una tabla de paso, sin restricciones, donde se cargan los datos crudos antes de pasar a las tablas definitivas. Se necesita porque, si se insertara directo en la tabla con restricciones, **una sola fila inválida detendría o rechazaría la carga** sin dejar rastro de cuál fue ni por qué.
-- **Detalle técnico:** `staging.staging_telemetria` guarda todo como `DOUBLE PRECISION` sin dominios. Ahí se valida cada fila y se clasifica (`estado_validacion`: `PENDIENTE`, `VALIDA`, `RECHAZADA`).
+**7. ¿Por qué TIMESTAMP WITH TIME ZONE y no sin zona horaria?**
+Los datos vienen de un sitio en Shenzhen y el equipo trabaja en otra zona. TIMESTAMPTZ almacena el instante en UTC y lo presenta según la zona de la sesión, lo que evita ambigüedades al comparar o cambiar de zona. Ocupa lo mismo que TIMESTAMP (8 bytes), así que no hay penalización de espacio.
 
-**13. ¿Qué es una tabla de cuarentena?** *(JS / DE)*
-- **Respuesta corta:** es el lugar donde se guardan las filas rechazadas, con su valor original, la regla que incumplieron y su estado de revisión, para que no se pierdan ni se mezclen con los datos válidos.
-- **Detalle técnico:** `calidad.registro_cuarentena` conserva la fila completa en `JSONB`, el lote, la regla y el estado (`PENDIENTE`, `CORREGIDO`, `DESCARTADO`, `REPROCESADO`).
+**8. ¿Por qué JSONB y no JSON?**
+JSONB se guarda en formato binario descompuesto, admite índices GIN (usamos `idx_contexto_valor_gin`), permite operadores de contención y consulta eficiente, y no conserva claves duplicadas. JSON guarda el texto tal cual y obliga a reanalizarlo en cada consulta. Perder el orden de las claves no importa para nuestro caso.
 
-**14. ¿Cómo llega un registro a cuarentena?** *(JS)*
-- **Respuesta corta:** **PostgreSQL no envía automáticamente a cuarentena** las filas que rechaza. Es el **proceso de staging el que las clasifica ANTES de intentar insertar**: las que incumplen una regla se copian a cuarentena y las válidas pasan a la tabla definitiva.
-- **Detalle técnico:** si se intentara un `INSERT` directo con un valor inválido, PostgreSQL lanzaría un error y no guardaría la fila en ninguna parte. La cuarentena es una **decisión de diseño** del proceso de carga.
-- **Cuidado en la sustentación:** el profesor puede sugerir que el motor lo hace solo. Hay que corregirlo con respeto y con este argumento.
+**9. ¿Por qué `lectura_telemetria` tiene 46 columnas? ¿Eso respeta la normalización?**
+Las 38 variables de medición describen un mismo hecho: una lectura de un inversor en un instante. Todas dependen de `(inversor_id, ts_lectura)` y de nada más, por lo que no hay dependencias parciales ni transitivas entre ellas. Una alternativa EAV (una fila por variable) multiplicaría las filas por unas 38 y complicaría las consultas. Las 4 columnas JSONB (battreserve, pvreserve, otherreserve, grid_reserve) guardan campos reservados sin esquema fijo.
 
-**15. ¿Qué pasa si intento insertar un voltaje de -500 V?** *(JM / JS)*
-- **Respuesta corta:** depende del camino.
-  1. **Directo en `lectura_telemetria`:** PostgreSQL lo rechaza con un error de restricción (`check_violation`, código `23514`), porque `dom_voltaje` exige `VALUE >= 0`. No se guarda nada.
-  2. **Por el flujo de carga (staging):** la fila entra a staging, la regla de calidad la marca como inválida y se registra en cuarentena con su valor original.
-- **Detalle técnico:** el mensaje de PostgreSQL sigue el patrón `value for domain ... violates check constraint ...`. Esto es lo que se muestra en la demostración (paso 8 de la sección B).
+**10. ¿Para qué sirven los 6 catálogos dimensionales?**
+Evitan texto repetido y garantizan integridad referencial: `dim_sitio` (1 fila), `dim_subsistema` (2), `dim_inversor` (2), `cat_variable_fisica` (38+), `cat_unidad_medida` (V, A, W, VA, Hz, °C, %, kΩ) y `cat_tipo_contexto` (7 fuentes). La tabla de hechos referencia el inversor por clave foránea.
 
-**16. ¿Pueden reprocesar un registro de cuarentena?** *(JS)*
-- **Respuesta corta:** sí. Como la cuarentena guarda la fila original completa y un campo `estado`, se puede corregir el dato (o la regla), volver a insertar en la tabla definitiva y marcar el registro como `REPROCESADO`.
-- **Detalle técnico:** el flujo es: revisar los `PENDIENTE`, decidir (corregir o descartar), reinsertar solo los corregidos y actualizar `estado` y `fecha_resolucion`. Quedan trazados por `lote_id`. **El procedimiento exacto es del coordinador (pendiente de confirmación).**
+### B. Calidad de datos y cuarentena
 
-### A.4 Sobre la migración
+**11. ¿Por qué la temperatura de -20.3 °C fue a cuarentena y no se bloqueó con un CHECK?**
+Porque no es un valor imposible por definición matemática, sino por contexto físico: en Celsius hay temperaturas negativas válidas, así que `dom_temperatura` no puede prohibirlas. Es imposible *en Shenzhen* (mínima histórica cercana a 0 °C) y apunta a falla de sensor o circuito abierto. Eso es una regla de calidad (`R_TEMP1_IMPOSIBLE`, 38 filas), no una restricción de tipo. Un CHECK habría abortado la carga completa; la cuarentena aísla la fila y conserva la evidencia.
 
-**17. ¿Cómo cargaron un millón de lecturas?** *(JS)*
-- **Respuesta corta:** **pendiente de confirmación por el coordinador.** El esquema recomendado es: cargar los datos crudos del SQLite a `staging` en bloque (por ejemplo, con `COPY`), validarlos allí y luego insertarlos en `solardb` con un `INSERT ... SELECT` por lotes, registrando cada lote en `calidad.lote_carga`.
-- **Detalle técnico:** la carga masiva es mucho más rápida que insertar fila por fila. Para acelerarla se recomienda crear los índices secundarios después de cargar y ejecutar `ANALYZE` al final (véase `09_diseno_fisico.md`). **Debe explicarse el método real que usó JS, no este.**
+**12. ¿Por qué hay 24,375 filas en cuarentena por P > S?**
+La potencia activa nunca puede superar a la aparente (P ≤ S = |V|·|I| en corriente alterna). Como son 24,375 de 24,422 (99.81% de la cuarentena, cálculo propio), no es ruido aleatorio sino un patrón sistemático: el desfase temporal del muestreo Modbus, donde P y S no se leen en el mismo instante, y pueden quedar levemente desfasadas. Es una limitación de adquisición, no un error de nuestra migración. Lo importante es que la regla lo detectó y lo aisló.
 
-**18. ¿Cuánto tiempo tardó la migración?** *(JS)*
-- **Respuesta corta:** **dato por medir.** No hay una cifra confirmada. Se obtiene de `calidad.lote_carga` (`fecha_fin - fecha_inicio`).
-- **Detalle técnico:** si el equipo no registra el tiempo, se puede medir ejecutando la migración con `\timing` activado en `psql` (o con el tiempo de ejecución que muestra DBeaver).
+**13. ¿No es un porcentaje muy alto de la cuarentena para una sola regla? ¿La regla es demasiado estricta?**
+Representa el 0.82% del total leído en conjunto, y la regla es una desigualdad física exacta. Una alternativa sería agregar una tolerancia (por ejemplo, aceptar P ≤ S + ε) para absorber el desfase de muestreo; lo dejamos como mejora futura. Mantener la regla estricta y revisar la cuarentena es más seguro que dejar pasar datos físicamente inconsistentes.
 
-**19. ¿Qué pasa si ejecutan la migración dos veces?** *(JS / JM)*
-- **Respuesta corta:** si se diseña bien, **no se duplican las lecturas**: la restricción `UNIQUE (inversor_id, ts_lectura)` lo impide, y la inserción usa `ON CONFLICT DO NOTHING` (o se verifica antes con `lote_carga`). **Pendiente de confirmación:** que no existan duplicados en el origen y que el script lo implemente así.
-- **Detalle técnico:** una migración con esta propiedad se llama **idempotente**: ejecutarla varias veces deja el mismo resultado que ejecutarla una.
+**14. ¿Perdieron datos al rechazar 24,422 filas?**
+No. Las filas aisladas se guardan completas como JSONB en `calidad.registro_cuarentena` con estado PENDIENTE. Solo están separadas de producción. La cuadratura (2,965,337 + 24,422 = 2,989,759) demuestra que cada fila leída tiene destino y que ninguna desapareció.
 
-**20. ¿Cuántos registros fueron rechazados y por qué?** *(JS)*
-- **Respuesta corta:** el **dato real sale de `calidad.lote_carga`** (`filas_rechazadas`) y de `registro_cuarentena`. Con las dos reglas diagnosticadas, el máximo esperado sería de **38 + 3.811 = 3.849** filas, **sin contar** las demás reglas que se definan.
-- **Detalle técnico:** una misma fila podría incumplir ambas reglas, por lo que el total de filas únicas podría ser **menor** a 3.849. Los ~58.000 a 60.000 nulos **no** se rechazan (son datos faltantes legítimos) y los 342.592 registros de 0 Hz **tampoco** (modo isla). Para el desglose por regla:
+**15. Si el dominio ya prohíbe potencia aparente negativa, ¿por qué `R_LINEPOWERVA_NEG` envía 8 filas a cuarentena en lugar de fallar?**
+Son dos capas. Las reglas de `calidad` se evalúan antes de insertar en producción y desvían la fila a cuarentena. El dominio es la última barrera: garantiza que, aunque algo se escape de las reglas, ninguna fila inválida entra en `solardb`. Si solo existiera el dominio, un valor malo haría fallar la inserción del lote completo.
+
+**16. Hay 6 reglas activas, pero el desglose muestra 4 con filas. ¿Qué pasa con las otras?**
+`R_NULOS_MODBUS` y `R_FREQ_CERO` no aparecen con filas en el desglose de cuarentena, es decir, no aislaron registros en este conjunto. Siguen activas como controles preventivos para cargas futuras.
+
+**17. ¿Qué significa el estado PENDIENTE y qué sigue después?**
+Indica que la fila aún no ha sido revisada. El ciclo previsto es revisarla, corregirla o descartarla de manera documentada, y reprocesarla si se corrige. Es la base para un flujo de calidad de datos auditable.
+
+**18. ¿Cuál es la diferencia entre integridad y calidad de datos en su proyecto?**
+Integridad es lo que la base impide por construcción: tipos, dominios, claves primarias, foráneas, UNIQUE y NOT NULL. Calidad es lo que valida si el dato es plausible físicamente y no se puede expresar siempre como una restricción: temperatura imposible para el sitio, P > S, etc. Nuestro diseño combina ambas.
+
+### C. Migración
+
+**19. ¿Qué pasa si ejecuto la migración dos veces?**
+En producción existe `UNIQUE (inversor_id, ts_lectura)`, por lo que una segunda ejecución no puede duplicar lecturas ya cargadas: la base rechazaría o ignoraría los duplicados según cómo esté escrita la inserción. Además, `calidad.lote_carga` registra cada ejecución como un lote con estado y contadores, lo que permite detectarla. *Confirma con Juan Sebastian cuál es el comportamiento exacto de su script (si usa `ON CONFLICT`, si limpia `staging` o si valida el lote antes), para no afirmar algo que no hace.*
+
+**20. ¿Cómo comprueban que no se perdió ninguna fila?**
+Con la cuadratura: leídas = aceptadas + rechazadas (2,989,759 = 2,965,337 + 24,422) y con los lotes auditados. El lote 4 (`analog_measurements`) lo registra: 2,989,759 leídas, 2,965,337 aceptadas, 24,422 rechazadas; el lote 6 (`context`): 25,178 leídas, 25,178 aceptadas, 0 rechazadas. Ambos con estado COMPLETADO.
+
+**21. ¿Por qué los dos inversores tienen rangos de fechas distintos?**
+Son datos reales de campo. El Inversor 1 (Cómputo) cubre del 2025-07-12 al 2026-07-13 (~1 año) y el Inversor 2 (HVAC) del 2025-07-14 al 2026-06-22 (~11 meses). Que los rangos no coincidan es una característica del dataset, no un defecto de la migración.
+
+**22. ¿Cómo cumplieron la meta de 1,000,000 de lecturas?**
+La superamos: 2,965,337 filas en producción equivalen al 296.5% de la meta; contando todas las filas leídas (2,989,759) es el 298.9%.
+
+### D. Rendimiento y almacenamiento
+
+**23. ¿Por qué no particionaron `lectura_telemetria`?**
+Con ~3 millones de filas (3.7 GB) una tabla única con índices B-tree adecuados responde bien, y el particionamiento añade complejidad (claves de partición en PK y UNIQUE, mantenimiento de particiones). Se justificaría a partir de decenas de millones de filas (referencia de >50 M) o cuando se necesite borrar o archivar por rango de fechas, y entonces se particionaría por rango de `ts_lectura`.
+
+**24. ¿Cuánto ocupa la base y cómo se compara con lo estimado en el diseño?**
+Ocupa ~3.88 GB: 3,824 MB la tabla de telemetría (3,440 datos + 384 índices), 34 MB la cuarentena, 26 MB el contexto y menos de 1 MB los catálogos. Los índices son ~10% de la tabla principal (384 de 3,824 MB). La comparación detallada con la estimación está en el documento 09.
+
+**25. ¿Qué índices tienen y por qué?**
+Siete: `idx_lectura_ts`, `idx_lectura_lote`, `idx_lectura_inversor_ts`, `idx_cuarentena_regla`, `idx_cuarentena_estado`, `idx_contexto_tipo` e `idx_contexto_valor_gin`. Cubren las consultas típicas: por tiempo, por lote, por inversor en un rango, cuarentena por regla o estado, contexto por tipo y búsqueda dentro del JSONB (GIN). Cada índice acelera lecturas pero encarece las escrituras y ocupa espacio, por eso no indexamos las 38 columnas.
+
+**26. ¿Por qué un índice GIN en `registro_contexto` y no B-tree?**
+Porque `valor` es JSONB y las consultas buscan claves o contenido dentro del documento (por ejemplo, `valor->>'source'` o contención con `@>`). Un B-tree no sirve para ese tipo de búsqueda; GIN sí.
+
+**27. ¿Por qué no usaron BRIN para el tiempo?**
+BRIN es muy compacto y funciona bien con datos insertados en orden temporal, pero con 3 M de filas el B-tree es asumible (384 MB en índices) y más flexible para búsquedas puntuales por `(inversor_id, ts_lectura)`. Con cientos de millones de filas, BRIN sería una opción que valdría la pena evaluar.
+
+### E. Privacidad y Ley 1581 de 2012
+
+**28. ¿Cómo manejan la Ley 1581 de 2012?**
+Clasificamos los datos: la telemetría (2,965,337 + 24,422 filas) no es dato personal; el contexto (25,178 registros) sí puede serlo. Marcamos con `contiene_datos_personales BOOLEAN NOT NULL DEFAULT FALSE`, y 204 registros de `wsl_bash_history` (usuarios, rutas, IPs) son los más críticos. Analizamos los artículos 3, 4, 5, 7, 8, 9, 10, 12, 13, 15, 17 y 18, definimos roles y redactamos un aviso de privacidad. Ver documento 14.
+
+**29. ¿Por qué `DEFAULT FALSE` y no `DEFAULT TRUE`? ¿No es riesgoso?**
+Es un riesgo conocido: si una carga olvida marcar, un registro con datos personales parecería inocuo. Por eso el proceso debe marcar explícitamente las fuentes sensibles, y hay una consulta de auditoría para verificar que `wsl_bash_history` tenga 204 registros marcados. Un DEFAULT TRUE marcaría de más y reduciría la utilidad del filtro. La medida compensatoria es la auditoría.
+
+**30. ¿Tienen autorización de los titulares (art. 9)?**
+No hay evidencia de una autorización individual. Lo reconocemos. La estrategia es de minimización: uso exclusivamente académico (finalidad, art. 4), no publicar ni compartir los registros marcados (arts. 4 y 13) y, si procede, seudonimizar o suprimir los 204 críticos. El dataset es público en Zenodo, pero eso no elimina por sí solo la obligación de analizar cada caso.
+
+**31. ¿Son datos sensibles según el artículo 5?**
+No. Los nombres de usuario, rutas e IPs no revelan origen racial, salud, orientación política u otros datos del artículo 5; son datos personales de carácter común. Si apareciera uno de esa categoría, el régimen sería más estricto.
+
+### F. Proyecto y equipo
+
+**32. ¿Qué limitaciones tiene SolarDB y qué harían distinto?**
+(1) La regla P > S podría tener una tolerancia por el desfase de muestreo. (2) La cuarentena está en PENDIENTE; falta un flujo formal de revisión y reproceso. (3) Faltan roles y vistas que restrinjan el acceso al contexto con datos personales. (4) No hay particionamiento porque el volumen actual no lo requiere. Reconocer estas limitaciones muestra criterio.
+
+### Preguntas cortas de respaldo
+
+- **¿Cuál es el dataset y de dónde viene?** OpenCEM v1.0.0, Bartels et al. (2026), DOI 10.5281/zenodo.21436223.
+- **¿Qué motor y herramienta usan?** PostgreSQL 18 y DBeaver 26.2.2.
+- **¿Quién hizo qué?** Juan Sebastian: arquitectura SolarDB, staging, cuarentena, migración y DDL. Deysi: modelado conceptual y lógico, 3FN y consultas de negocio. Jose Miguel: diccionario de datos, diseño físico, privacidad y esta guía.
+- **¿Cómo se reproduce el proyecto?** Clonando el repositorio y ejecutando los scripts en el orden documentado en `docs/`.
+
+## 15.5 Guion de demostración en vivo en DBeaver
+
+**Duración estimada:** 8 a 10 minutos. **Antes de empezar:** conexión activa a PostgreSQL 18, editor SQL abierto, sin credenciales visibles en pantalla, fuente grande.
+
+### Paso 1 — Mostrar la arquitectura (1 min)
+
 ```sql
-SELECT r.codigo_regla, count(*) AS filas
-FROM calidad.registro_cuarentena q
-JOIN calidad.regla_calidad r USING (regla_id)
-GROUP BY r.codigo_regla
-ORDER BY filas DESC;
+SELECT schema_name
+FROM   information_schema.schemata
+WHERE  schema_name IN ('solardb', 'staging', 'calidad')
+ORDER  BY schema_name;
+```
+*Esperado:* tres filas. Di: "producción, carga temporal y calidad".
+
+### Paso 2 — Conteos reales (1 min)
+
+```sql
+SELECT 'solardb.lectura_telemetria' AS tabla, COUNT(*) AS filas FROM solardb.lectura_telemetria
+UNION ALL
+SELECT 'calidad.registro_cuarentena', COUNT(*) FROM calidad.registro_cuarentena
+UNION ALL
+SELECT 'solardb.registro_contexto', COUNT(*) FROM solardb.registro_contexto;
+```
+*Esperado:* **2,965,337**, **24,422** y **25,178**.
+
+### Paso 3 — Cuadratura (30 s)
+
+```sql
+SELECT (SELECT COUNT(*) FROM solardb.lectura_telemetria)
+     + (SELECT COUNT(*) FROM calidad.registro_cuarentena) AS total_leidas;
+```
+*Esperado:* **2,989,759**.
+
+### Paso 4 — Lotes auditados (30 s)
+
+```sql
+SELECT * FROM calidad.lote_carga ORDER BY lote_id;
+```
+*Esperado:* lote 4 (`analog_measurements`) con 2,989,759 / 2,965,337 / 24,422 y lote 6 (`context`) con 25,178 / 25,178 / 0, ambos COMPLETADO.
+
+### Paso 5 — Cuarentena por regla (1 min)
+
+Primero localiza el nombre de la columna que guarda la regla:
+
+```sql
+SELECT column_name, data_type
+FROM   information_schema.columns
+WHERE  table_schema = 'calidad' AND table_name = 'registro_cuarentena'
+ORDER  BY ordinal_position;
 ```
 
-### A.5 Sobre las consultas
+Luego agrupa por esa columna (reemplaza `<columna_regla>` por el nombre que veas):
 
-**21. ¿Cómo calculan la energía diaria si el muestreo no es uniforme?** *(DE)*
-- **Respuesta corta:** la energía es la **integral de la potencia en el tiempo**. Como las lecturas no están separadas por un intervalo exacto (~12,6 s en promedio, con huecos por *timeouts*), no se multiplica por un intervalo fijo: se usa el **tiempo real entre lecturas consecutivas** (método del trapecio).
-- **Detalle técnico:** energía = suma de `(P_anterior + P_actual) / 2 × Δt`. Se convierte de W·s a kWh dividiendo por 3.600.000. Los huecos largos se descartan para no inventar energía donde no hubo medición. Ejemplo de referencia (**la consulta final es de DE; el umbral de huecos está pendiente de confirmación**):
 ```sql
-WITH muestras AS (
-  SELECT ts_lectura, outsumw,
-         LAG(outsumw) OVER w AS w_ant,
-         EXTRACT(EPOCH FROM ts_lectura - LAG(ts_lectura) OVER w) AS dt_s
-  FROM solardb.lectura_telemetria
-  WHERE inversor_id = 1
-  WINDOW w AS (PARTITION BY inversor_id ORDER BY ts_lectura)
-)
-SELECT date_trunc('day', ts_lectura) AS dia,
-       round((SUM((outsumw + w_ant) / 2.0 * dt_s) / 3600000.0)::numeric, 3) AS kwh
-FROM muestras
-WHERE dt_s IS NOT NULL AND outsumw IS NOT NULL AND w_ant IS NOT NULL
-  AND dt_s <= 60            -- umbral de hueco: a confirmar
-GROUP BY 1
-ORDER BY 1;
+SELECT <columna_regla> AS regla, COUNT(*) AS filas
+FROM   calidad.registro_cuarentena
+GROUP  BY <columna_regla>
+ORDER  BY filas DESC;
 ```
-- Notas: `outsumw` es la potencia activa total a la microrred (W). El día de `date_trunc` depende de la zona horaria de la sesión; hay que acordar si se usa la del sitio (Shenzhen) o UTC. El resultado se convierte a `NUMERIC` para presentar totales estables (véase la justificación en `08_diccionario_datos.md`).
+*Esperado:* R_P_MAYOR_S 24,375; R_TEMP1_IMPOSIBLE 38; R_LINEPOWERVA_NEG 8; R_LINECURRA_NEG 1.
 
-**22. ¿Por qué usaron ese umbral de batería baja?** *(DE)*
-- **Respuesta corta:** **pendiente de confirmación por DE**: el umbral exacto no está en el contexto de este documento. La respuesta debe apoyarse en datos, no en una cifra «porque sí».
-- **Detalle técnico:** la variable es `battsoc` (estado de carga, en %), con rango observado de **6 a 100**. Un umbral razonable se justifica con la distribución real de los datos (por ejemplo, con percentiles) o con las recomendaciones del fabricante de la batería. Se debe poder decir: qué porcentaje de lecturas cae bajo el umbral y por qué ese corte es útil para el negocio. Para obtener esa cifra:
+> Haz estos dos pasos en tu ensayo para tener el nombre exacto de la columna y no improvisar frente al profesor.
+
+### Paso 6 — Los dominios en acción (1.5 min)
+
 ```sql
-SELECT count(*) FILTER (WHERE battsoc < <umbral>) AS bajo_umbral,
-       count(battsoc) AS con_dato
-FROM solardb.lectura_telemetria;
+SELECT t.typname AS dominio, pg_get_constraintdef(c.oid) AS restriccion
+FROM   pg_type t
+JOIN   pg_namespace n  ON n.oid = t.typnamespace
+JOIN   pg_constraint c ON c.contypid = t.oid
+WHERE  n.nspname = 'solardb' AND t.typtype = 'd'
+ORDER  BY t.typname;
 ```
+*Esperado:* los dominios con CHECK (8 filas); los otros 4 no tienen CHECK, y lo explicas.
 
-**23. ¿Qué muestra la consulta JSON?** *(DE / JM)*
-- **Respuesta corta:** **pendiente de confirmación por DE** (se debe describir la consulta real). En general, una consulta JSON sobre `registro_contexto` filtra o agrupa los eventos de contexto (estaciones de trabajo, calendario, eventos climáticos) por el contenido del campo `valor`, para relacionarlos con la telemetría.
-- **Detalle técnico:** se apoya en `JSONB` y en el índice GIN (operador `@>`). Ejemplo general con una fuente real del dataset:
+Ahora la prueba de que protegen:
+
 ```sql
--- Cantidad de eventos de contexto por fuente (el total debe dar 25.178)
-SELECT fuente_contexto, count(*)
-FROM solardb.registro_contexto
-GROUP BY fuente_contexto
-ORDER BY count(*) DESC;
+SELECT 150::solardb.dom_porcentaje;
 ```
-- **Cuidado con la privacidad:** si la consulta toca `wsl_bash_history` o `windows_event_log`, usar la vista `solardb.v_contexto_sin_personales` y **no mostrar contenido real en pantalla** (véase `14_seguridad_y_privacidad.md`).
+*Esperado:* error de violación de la restricción del dominio. Di: "el tipo mismo rechaza el valor".
 
-### A.6 Preguntas adicionales sobre diccionario de datos, diseño físico y privacidad (JM)
+```sql
+SELECT (-5)::solardb.dom_voltaje;
+```
+*Esperado:* error igual. Ya no hay que repetir el CHECK en cada columna.
 
-**24. ¿Por qué `DOUBLE PRECISION` y no `NUMERIC` en la telemetría?** *(JM)*
-- **Respuesta corta:** porque son mediciones de sensor con incertidumbre propia (resolución de una décima), el origen ya es un flotante de 8 bytes (no se pierde información) y las agregaciones sobre casi 3 millones de filas son más rápidas. `NUMERIC` se reserva para datos exactos (especificaciones nominales y totales de energía).
+### Paso 7 — Restricciones de la tabla principal (1 min)
 
-**25. ¿Por qué `timestamptz` y no `timestamp`?** *(JM)*
-- **Respuesta corta:** los datos vienen en UTC (Unix) de un sitio en Shenzhen y se analizan desde otra zona horaria. `timestamptz` guarda un **instante absoluto** y lo muestra en la zona del cliente; `timestamp` guarda un valor literal sin zona y puede interpretarse mal.
+```sql
+SELECT conname, contype, pg_get_constraintdef(oid) AS definicion
+FROM   pg_constraint
+WHERE  conrelid = 'solardb.lectura_telemetria'::regclass;
+```
+*Esperado:* PK en `lectura_id`, UNIQUE `(inversor_id, ts_lectura)`, FK a `dim_inversor` y a `calidad.lote_carga`.
 
-**26. ¿Por qué `JSONB` y no `JSON`?** *(JM)*
-- **Respuesta corta:** `JSONB` está ya procesado (consultas más rápidas), permite el índice GIN y los operadores de contención (`@>`, `?`). `JSON` guarda el texto tal cual y lo reanaliza en cada consulta.
+### Paso 8 — Distribución por inversor (1 min)
 
-**27. ¿Por qué `BIGINT` en `lectura_id`, si 3 millones caben en un `INTEGER`?** *(JM)*
-- **Respuesta corta:** es cierto que caben (usan ~0,14 % del rango). Se eligió `BIGINT` por crecimiento: la tabla recibe datos continuamente y cambiar el tipo de una llave primaria más adelante es costoso. El sobrecosto es de 4 bytes por fila (≈ 12 MB en total).
+```sql
+SELECT inversor_id,
+       COUNT(*)         AS filas,
+       MIN(ts_lectura)  AS primera,
+       MAX(ts_lectura)  AS ultima
+FROM   solardb.lectura_telemetria
+GROUP  BY inversor_id
+ORDER  BY inversor_id;
+```
+*Esperado:* 1,594,461 y 1,370,876 filas con los rangos de la hoja de cifras.
 
-**28. ¿Por qué no particionaron la tabla de lecturas?** *(JM)*
-- **Respuesta corta:** con ~3 millones de filas (~0,7 GiB), un índice B-tree compuesto resuelve los filtros por fecha e inversor. El particionamiento añade complejidad (la PK debe incluir la clave de partición) y se documenta como trabajo futuro.
+### Paso 9 — Tamaños en disco (1 min)
 
-**29. ¿Qué datos personales tiene el dataset y cómo los protegieron?** *(JM)*
-- **Respuesta corta:** los registros `wsl_bash_history` (204) y `windows_event_log` (6.271) **pueden** contener usuarios, rutas e IP. Se aplica **minimización**: anonimización, enmascaramiento de IP, vistas que ocultan el contenido, roles con permisos mínimos y un repositorio sin datos crudos ni credenciales. La clasificación es **provisional** hasta inspeccionar el contenido real. Normas: Ley 1581 de 2012 (arts. 3, 4, 5, 6, 8, 10, 17 y 26) y Decreto 1377 de 2013.
+```sql
+SELECT n.nspname || '.' || c.relname                                            AS tabla,
+       pg_size_pretty(pg_total_relation_size(c.oid))                            AS total,
+       pg_size_pretty(pg_total_relation_size(c.oid) - pg_indexes_size(c.oid))   AS datos,
+       pg_size_pretty(pg_indexes_size(c.oid))                                   AS indices
+FROM   pg_class c
+JOIN   pg_namespace n ON n.oid = c.relnamespace
+WHERE  c.relkind = 'r' AND n.nspname IN ('solardb', 'calidad')
+ORDER  BY pg_total_relation_size(c.oid) DESC;
+```
+*Esperado:* ~3,824 MB, ~34 MB y ~26 MB para las tres tablas grandes. Pueden variar levemente si se ejecutó VACUUM o ANALYZE.
 
-**30. ¿Por qué no hay contraseñas en el repositorio?** *(JM)*
-- **Respuesta corta:** porque cualquiera con acceso al repositorio las vería, y quedarían en el historial de Git aunque se borraran. Las credenciales se piden al conectar y los archivos sensibles están en `.gitignore`.
+### Paso 10 — Un índice en acción (1 min)
 
----
+```sql
+EXPLAIN ANALYZE
+SELECT *
+FROM   solardb.lectura_telemetria
+WHERE  inversor_id = 1
+AND    ts_lectura BETWEEN '2025-08-01' AND '2025-08-02';
+```
+*Esperado:* un plan con *Index Scan* o *Bitmap Index Scan* sobre `idx_lectura_inversor_ts`. Ajusta `inversor_id` si en tu base los identificadores son distintos.
 
-## B. Guion para la demostración en vivo (DBeaver)
+### Paso 11 — Privacidad (1 min)
 
-**Antes de la demostración (preparación):**
-- Ensayar el guion completo al menos una vez, **con la migración ya ejecutada** en una base de prueba, y anotar el tiempo.
-- Si la migración tarda mucho, no ejecutarla en vivo: mostrar la ya hecha, o ejecutarla sobre un subconjunto.
-- Tener a mano los scripts DDL **en orden** y el nombre exacto de cada uno (**lo define el coordinador; no están confirmados aquí**).
-- Tener capturas de pantalla de respaldo por si falla la conexión.
-- **Nunca mostrar contraseñas en pantalla** (la ventana de conexión de DBeaver debe quedar cerrada o con la clave oculta) ni datos reales de `wsl_bash_history` o `windows_event_log`.
+```sql
+SELECT valor->>'source'                                   AS fuente,
+       COUNT(*)                                           AS total_registros,
+       COUNT(*) FILTER (WHERE contiene_datos_personales)  AS marcados
+FROM   solardb.registro_contexto
+GROUP  BY valor->>'source'
+ORDER  BY total_registros DESC;
+```
+*Esperado:* la suma de `total_registros` es **25,178**, con `wsl_bash_history` = **204**.
 
-| Paso | Qué se hace | Qué se muestra / qué se dice |
+### Cierre de la demostración (20 s)
+
+"Todo lo que vimos cuadra: 2,965,337 + 24,422 = 2,989,759 filas, con integridad en el motor y calidad en la cuarentena."
+
+### Plan B si algo falla
+
+| Problema | Solución |
+|---|---|
+| Se pierde la conexión | Reconectar con *Invalidate/Reconnect*; tener capturas de pantalla de cada resultado como respaldo |
+| Una consulta tarda | Explicar que son ~3 M de filas y esperar; no cancelar |
+| Un nombre de columna no existe | Usar la consulta de `information_schema.columns` del paso 5 |
+| Un número no coincide | No inventar: decir "voy a verificar" y mostrar la fuente (`calidad.lote_carga`) |
+
+## 15.6 Estructura del PDF final
+
+El informe se compila como `report/BDI_Taller6_RaigosaGil_SosaCartagena_EchavarriaSoto.pdf`. La estructura definitiva por capítulos, la asignación por integrante y las instrucciones de exportación están en el documento 16. Resumen de la tabla de contenidos:
+
+| Sección | Contenido | Documento |
 |---|---|---|
-| **1. Crear la base de datos desde cero** | En DBeaver, conectarse al servidor y ejecutar:<br>`CREATE DATABASE solardb_demo;`<br>Abrir una conexión nueva a esa base. | Una base vacía: «partimos desde cero, sin datos ni objetos». Se muestra el árbol de DBeaver sin tablas. |
-| **2. Ejecutar los scripts DDL en orden** | Abrir y ejecutar cada script del coordinador en el orden acordado: esquemas, dominios, catálogos, tablas de hechos, tablas de calidad, tablas de staging, índices y vistas (**nombres de archivo pendientes**). | Se explica por qué ese orden: los dominios y esquemas deben existir antes de las tablas que los usan, y las tablas referenciadas antes de las que tienen llaves foráneas. Se muestran los tres esquemas: `solardb`, `staging`, `calidad`. |
-| **3. Cargar catálogos** | Ejecutar el script de carga de catálogos (**pendiente de confirmación**).<br>Verificar:<br>`SELECT * FROM solardb.dim_inversor;`<br>`SELECT count(*) FROM solardb.cat_variable_fisica;` | Se ven los 2 inversores (1 y 2) y las 30 variables con sus unidades (V, A, W, VA, Hz, °C, %, kΩ). |
-| **4. Ejecutar la migración de datos** | Ejecutar el script de migración del coordinador (**pendiente**) o mostrar el resultado de una ejecución previa.<br>Consultar:<br>`SELECT * FROM calidad.lote_carga;` | Cuántas filas se leyeron, se aceptaron y se rechazaron, y cuánto tardó. Se explica el flujo: staging, validación y destino. |
-| **5. Mostrar que hay más de un millón de lecturas** | `SELECT count(*) FROM solardb.lectura_telemetria;` | Resultado esperado: **más de 1.000.000** (el origen tiene 2.989.759, menos las filas rechazadas; **cifra final pendiente**). |
-| **6. Ejecutar una consulta de negocio** | Ejecutar la consulta de energía diaria de DE (referencia: pregunta 21). | Se explica el cálculo con tiempos reales entre lecturas, no con un intervalo fijo. |
-| **7. Insertar un dato válido y mostrarlo** | Ver la nota (a) debajo de la tabla. | Se muestra la fila insertada y se explica que cumple los dominios. |
-| **8. Intentar insertar un dato inválido y mostrar el rechazo** | Ver la nota (b) debajo de la tabla. | El error de PostgreSQL (`check_violation`, código 23514) indica que el valor viola el dominio `dom_voltaje`. No queda nada guardado. |
-| **9. Mostrar la tabla de cuarentena** | `SELECT r.codigo_regla, q.estado, count(*)`<br>`FROM calidad.registro_cuarentena q`<br>`JOIN calidad.regla_calidad r USING (regla_id)`<br>`GROUP BY 1, 2;` | Los registros rechazados por regla y estado (por ejemplo, `temper1 = -20,3` y P > S). Se aclara que **la clasificación la hizo el proceso de staging**, no el motor automáticamente (pregunta 14). |
-| **10. Mostrar las vistas** | Listar las vistas del esquema `solardb` (las de negocio del equipo y `v_contexto_sin_personales`).<br>`SELECT * FROM solardb.v_contexto_sin_personales LIMIT 10;` | Las vistas de negocio simplifican consultas. La vista de contexto **oculta el contenido** de los registros con datos personales (Ley 1581). |
-| **11. Mostrar un `EXPLAIN ANALYZE` con índice** | Ver la nota (c) debajo de la tabla. | En el plan, `Index Scan` o `Bitmap Index Scan` sobre `(inversor_id, ts_lectura)`: el índice se usa y se ve el tiempo de ejecución. |
+| Portada institucional | Institución, curso, grupo, docente, integrantes, fecha | — |
+| Resumen y palabras clave | Síntesis con métricas reales | — |
+| Tabla de contenidos | Numerada, con figuras y tablas | — |
+| Capítulos 1 a 8 | Contexto, modelado conceptual y lógico, normalización 3FN y arquitectura | `docs/00` a `docs/07` |
+| Capítulo 9 | Diccionario de datos actualizado | `docs/08_diccionario_datos.md` |
+| Capítulo 10 | Diseño físico actualizado | `docs/09_diseno_fisico.md` |
+| Capítulos 11 a 14 | Resultados de migración, consultas y demás según tus archivos | `docs/10` a `docs/13` (el 11 contiene las métricas reales) |
+| Capítulo 15 | Seguridad y privacidad (Ley 1581 de 2012) | `docs/14_seguridad_y_privacidad.md` |
+| Capítulo 16 | Guía de sustentación | `docs/15_guia_sustentacion.md` |
+| Referencias | APA 7.ª edición, incluida la cita de OpenCEM | — |
 
-**(a) Paso 7: inserción válida.** Se usan valores de demostración dentro de los rangos observados (por ejemplo, el máximo de `battvolt` observado es 57,60 V y el de `battsoc`, 100 %). Se limpia la fila al terminar para no alterar los conteos:
-```sql
-INSERT INTO solardb.lectura_telemetria
-  (inversor_id, ts_lectura, lote_id, battvolt, battsoc)
-VALUES
-  (1, now(), (SELECT max(lote_id) FROM calidad.lote_carga), 57.60, 100)
-RETURNING *;
+> Los títulos exactos de los documentos `00` a `07` y `10` a `13` deben tomarse de tus archivos; esta guía no los modifica.
 
--- Limpiar la fila de demostración
-DELETE FROM solardb.lectura_telemetria
-WHERE inversor_id = 1 AND battvolt = 57.60 AND battsoc = 100
-  AND ts_lectura >= now() - interval '10 minutes';
-```
-> Ajustar si el script del coordinador exige otras columnas obligatorias. Se recomienda ejecutar la limpieza **con cuidado** y comprobar con un `SELECT` antes de borrar.
+## 15.7 Lista de verificación el día de la sustentación
 
-**(b) Paso 8: inserción inválida (la del profesor, -500 V).**
-```sql
-INSERT INTO solardb.lectura_telemetria
-  (inversor_id, ts_lectura, lote_id, battvolt)
-VALUES
-  (1, now(), (SELECT max(lote_id) FROM calidad.lote_carga), -500);
-```
-Resultado esperado: un error que indica que el valor viola el `CHECK` del dominio `dom_voltaje`. Si el equipo quiere mostrar también la cuarentena, la misma fila se inserta en `staging.staging_telemetria` y se ejecuta el procedimiento de clasificación del coordinador (**pendiente de confirmación**).
+- [ ] Conexión DBeaver probada y sin credenciales visibles.
+- [ ] Hoja de cifras (15.2) memorizada.
+- [ ] Guion de los pasos 1 a 11 ensayado, con el nombre de la columna de regla ya identificado.
+- [ ] Capturas de pantalla de cada resultado como respaldo.
+- [ ] Repositorio actualizado (`git pull origin main`) y rama `jose/auditoria-e-informe-pdf` subida.
+- [ ] PDF final abierto y revisado.
+- [ ] Reparto de preguntas acordado con Juan Sebastian y Deysi.
+- [ ] Agua, cargador y copia del PDF en USB.
 
-**(c) Paso 11: plan de ejecución.** Primero se consulta un rango real de fechas:
-```sql
-SELECT min(ts_lectura), max(ts_lectura) FROM solardb.lectura_telemetria;
+## 15.8 Referencias (APA 7.ª edición)
 
-EXPLAIN (ANALYZE, BUFFERS)
-SELECT ts_lectura, battvolt, battsoc
-FROM solardb.lectura_telemetria
-WHERE inversor_id = 1
-  AND ts_lectura >= '<fecha_inicio_real>'
-  AND ts_lectura <  '<fecha_fin_real>';
-```
-Se sustituyen las fechas por valores reales obtenidos de la primera consulta. Si el plan muestra `Seq Scan`, puede ser correcto cuando el rango abarca gran parte de la tabla; en ese caso se elige un rango más estrecho.
+Bartels, T. S., Wu, R., Lu, X., Chen, Y., Lu, Y., Xia, F., Yang, H., Chen, Y., & Li, T. (2026). *OpenCEM: Multimodal photovoltaic and battery microgrid dataset with context records and sky imagery* (Version 1.0.0) [Dataset]. Zenodo. https://doi.org/10.5281/zenodo.21436223
 
----
-
-## C. Estructura del documento PDF final
-
-**Nombre del archivo:** `BDI_Taller6_RaigosaGil_SosaCartagena_EchavarriaSoto.pdf`
-
-> Propuesta de tabla de contenidos, **pendiente de confirmación por el coordinador**. El orden sigue el de los documentos del repositorio; los responsables son los del reparto del Taller 6.
-
-**Portada**
-- Título: «SolarDB: integridad y calidad de datos en una microrred híbrida mediante PostgreSQL».
-- Taller 6, Bases de Datos I, grupo 811, semestre 2026-II.
-- Institución Universitaria Pascual Bravo.
-- Docente: Ramiro Grisales Montoya.
-- Integrantes: Juan Sebastian Raigosa Gil, Jose Miguel Sosa Cartagena, Deysi Carolina Echavarria Soto.
-- Fecha de entrega.
-
-**Tabla de contenidos**
-
-| N.º | Sección | Contenido | Responsable |
-|---|---|---|---|
-| — | Resumen ejecutivo | Problema, solución y resultados en una página | Todos |
-| 1 | Introducción y objetivos | Contexto, justificación, objetivo general y específicos | Todos |
-| 2 | Dataset OpenCEM | Descripción, sistema físico, tablas originales y conteos, cita obligatoria, verificación (SHA-256) | JS |
-| 3 | Diagnóstico de calidad | Nulos, `temper1 = -20,3 °C`, P > S, frecuencia 0 Hz y su tratamiento | JS / DE |
-| 4 | Modelado conceptual | Entidades, atributos, relaciones y diagrama entidad-relación | DE |
-| 5 | Modelado lógico y normalización | Dependencias funcionales, 3FN, decisiones de desnormalización | DE |
-| 6 | Arquitectura SolarDB | Esquemas, dominios, staging, cuarentena y reglas de calidad | JS |
-| 7 | Diccionario de datos | Tablas y columnas (resumen; completo en anexo) y justificación de tipos de datos | JM |
-| 8 | Diseño físico | Esquemas, tablespaces, particionamiento, índices y almacenamiento | JM |
-| 9 | Migración de datos | Flujo staging a destino, lotes, idempotencia, resultados y rechazos | JS |
-| 10 | Consultas de negocio | Energía diaria, batería baja, consulta JSON, vistas y su análisis | DE |
-| 11 | Rendimiento | `EXPLAIN ANALYZE` e impacto de los índices | JM / DE |
-| 12 | Seguridad y privacidad | Ley 1581 de 2012: datos, roles, principios, medidas y aviso de privacidad | JM |
-| 13 | Protección del repositorio | Qué no debe subirse; `.gitignore` | JM |
-| 14 | Resultados y análisis | Cifras finales de la migración y de la cuarentena | JS |
-| 15 | Conclusiones y trabajo futuro | Aprendizajes, limitaciones y mejoras (por ejemplo, particionamiento) | Todos |
-| 16 | Referencias | Cita de OpenCEM (Bartels et al., 2026) y normas (Ley 1581 de 2012, Decreto 1377 de 2013, Ley 1266 de 2008), en el formato exigido por el docente | JM |
-| A | Anexo A | Diccionario de datos completo | JM |
-| B | Anexo B | Scripts DDL y de migración (**sin credenciales**) | JS |
-| C | Anexo C | Guion de la demostración | JM |
-| D | Anexo D | Enlace al repositorio: https://github.com/desarrollosebas/Trabajofinal | Todos |
-
-**Recomendaciones para el PDF:**
-- Todas las cifras deben provenir de datos **medidos** (por ejemplo, de `lote_carga`), no de estimaciones.
-- Numerar las figuras y las tablas, y citarlas en el texto.
-- No incluir datos reales de los registros de contexto con posibles datos personales.
-- Comprobar que el PDF no contenga contraseñas, tokens ni cadenas de conexión.
-- Confirmar con el docente el formato de citas y la extensión esperada.
-
----
-
-## D. Lista de verificación antes de sustentar
-
-- [ ] Los tres integrantes pueden explicar las preguntas 10 a 16 (línea de profundización) sin leer.
-- [ ] Se conocen las cifras reales: filas migradas, filas rechazadas por regla y tiempo de la migración.
-- [ ] Se ensayó la demostración completa con la base de datos ya cargada.
-- [ ] Se completaron los datos **pendientes de confirmación** de los documentos 08, 09, 14 y esta guía.
-- [ ] El repositorio no contiene contraseñas, tokens, cadenas de conexión ni datos crudos.
-- [ ] El PDF final está generado con el nombre acordado.
-- [ ] Hay capturas de pantalla de respaldo de cada paso de la demostración.
-
-Este documento no contiene contraseñas, tokens ni cadenas de conexión.
+Congreso de la República de Colombia. (2012). *Ley Estatutaria 1581 de 2012, por la cual se dictan disposiciones generales para la protección de datos personales*.
