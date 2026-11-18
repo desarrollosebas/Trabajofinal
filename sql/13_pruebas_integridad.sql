@@ -22,7 +22,7 @@
  * ============================================================================
  */
 
-\set ON_ERROR_STOP off
+-- \set ON_ERROR_STOP off (Solo necesario en psql por consola; en DBeaver se omite)
 
 SELECT '=============================================================================' AS banner;
 SELECT ' INICIO DE BATERÍA DE PRUEBAS DE INTEGRIDAD — SOLARDB (POSTGRESQL 18)'         AS banner;
