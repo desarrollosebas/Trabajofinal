@@ -300,57 +300,57 @@ ORDER BY registros_rechazados DESC;
 
 SELECT
     'outvolta'     AS variable, COUNT(*) FILTER (WHERE outvolta IS NULL)     AS nulos,
-    ROUND(COUNT(*) FILTER (WHERE outvolta IS NULL) * 100.0 / COUNT(*), 2)   AS pct_nulos
+    ROUND(COUNT(*) FILTER (WHERE outvolta IS NULL) * 100.0 / NULLIF(COUNT(*), 0), 2)   AS pct_nulos
 FROM solardb.lectura_telemetria
 UNION ALL
 SELECT
     'pv1volt',     COUNT(*) FILTER (WHERE pv1volt IS NULL),
-    ROUND(COUNT(*) FILTER (WHERE pv1volt IS NULL) * 100.0 / COUNT(*), 2)
+    ROUND(COUNT(*) FILTER (WHERE pv1volt IS NULL) * 100.0 / NULLIF(COUNT(*), 0), 2)
 FROM solardb.lectura_telemetria
 UNION ALL
 SELECT
     'gridpowerw_a', COUNT(*) FILTER (WHERE gridpowerw_a IS NULL),
-    ROUND(COUNT(*) FILTER (WHERE gridpowerw_a IS NULL) * 100.0 / COUNT(*), 2)
+    ROUND(COUNT(*) FILTER (WHERE gridpowerw_a IS NULL) * 100.0 / NULLIF(COUNT(*), 0), 2)
 FROM solardb.lectura_telemetria
 UNION ALL
 SELECT
     'outfreq',     COUNT(*) FILTER (WHERE outfreq IS NULL),
-    ROUND(COUNT(*) FILTER (WHERE outfreq IS NULL) * 100.0 / COUNT(*), 2)
+    ROUND(COUNT(*) FILTER (WHERE outfreq IS NULL) * 100.0 / NULLIF(COUNT(*), 0), 2)
 FROM solardb.lectura_telemetria
 UNION ALL
 SELECT
     'pv1power',    COUNT(*) FILTER (WHERE pv1power IS NULL),
-    ROUND(COUNT(*) FILTER (WHERE pv1power IS NULL) * 100.0 / COUNT(*), 2)
+    ROUND(COUNT(*) FILTER (WHERE pv1power IS NULL) * 100.0 / NULLIF(COUNT(*), 0), 2)
 FROM solardb.lectura_telemetria
 UNION ALL
 SELECT
     'temper1',     COUNT(*) FILTER (WHERE temper1 IS NULL),
-    ROUND(COUNT(*) FILTER (WHERE temper1 IS NULL) * 100.0 / COUNT(*), 2)
+    ROUND(COUNT(*) FILTER (WHERE temper1 IS NULL) * 100.0 / NULLIF(COUNT(*), 0), 2)
 FROM solardb.lectura_telemetria
 UNION ALL
 SELECT
     'temper2',     COUNT(*) FILTER (WHERE temper2 IS NULL),
-    ROUND(COUNT(*) FILTER (WHERE temper2 IS NULL) * 100.0 / COUNT(*), 2)
+    ROUND(COUNT(*) FILTER (WHERE temper2 IS NULL) * 100.0 / NULLIF(COUNT(*), 0), 2)
 FROM solardb.lectura_telemetria
 UNION ALL
 SELECT
     'battvolt',    COUNT(*) FILTER (WHERE battvolt IS NULL),
-    ROUND(COUNT(*) FILTER (WHERE battvolt IS NULL) * 100.0 / COUNT(*), 2)
+    ROUND(COUNT(*) FILTER (WHERE battvolt IS NULL) * 100.0 / NULLIF(COUNT(*), 0), 2)
 FROM solardb.lectura_telemetria
 UNION ALL
 SELECT
     'battcurr',    COUNT(*) FILTER (WHERE battcurr IS NULL),
-    ROUND(COUNT(*) FILTER (WHERE battcurr IS NULL) * 100.0 / COUNT(*), 2)
+    ROUND(COUNT(*) FILTER (WHERE battcurr IS NULL) * 100.0 / NULLIF(COUNT(*), 0), 2)
 FROM solardb.lectura_telemetria
 UNION ALL
 SELECT
     'outsumw',     COUNT(*) FILTER (WHERE outsumw IS NULL),
-    ROUND(COUNT(*) FILTER (WHERE outsumw IS NULL) * 100.0 / COUNT(*), 2)
+    ROUND(COUNT(*) FILTER (WHERE outsumw IS NULL) * 100.0 / NULLIF(COUNT(*), 0), 2)
 FROM solardb.lectura_telemetria
 UNION ALL
 SELECT
     'linefreq',    COUNT(*) FILTER (WHERE linefreq IS NULL),
-    ROUND(COUNT(*) FILTER (WHERE linefreq IS NULL) * 100.0 / COUNT(*), 2)
+    ROUND(COUNT(*) FILTER (WHERE linefreq IS NULL) * 100.0 / NULLIF(COUNT(*), 0), 2)
 FROM solardb.lectura_telemetria
 ORDER BY nulos DESC;
 
