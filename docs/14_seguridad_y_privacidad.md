@@ -1,317 +1,283 @@
-# Seguridad y Privacidad — SolarDB (Ley 1581 de 2012)
+**INSTITUCIÓN UNIVERSITARIA PASCUAL BRAVO**
+**Bases de Datos I — Grupo 811 — Semestre 2026-II**
+**Docente:** Ramiro Grisales Montoya
+**Proyecto:** Taller 6 (Fase Final) — SolarDB: Integridad y calidad de datos en una microrred híbrida mediante PostgreSQL
 
-| | |
+| Campo | Detalle |
 |---|---|
-| **Proyecto** | Taller 6 — Bases de Datos I. SolarDB: integridad y calidad de datos en una microrred híbrida mediante PostgreSQL |
-| **Institución / grupo** | Institución Universitaria Pascual Bravo, grupo 811, semestre 2026-II |
-| **Docente** | Ramiro Grisales Montoya |
-| **Integrante responsable** | Jose Miguel Sosa Cartagena (diccionario de datos, diseño físico, privacidad y documento final) |
-| **Fecha** | 15 de noviembre de 2026 |
-| **Dataset** | OpenCEM v1.0.0 (DOI: 10.5281/zenodo.21436223) |
-| **Documentos relacionados** | `docs/08_diccionario_datos.md`, `docs/09_diseno_fisico.md` |
-
-> **Alcance y límites de este documento.** Es un análisis académico elaborado por estudiantes de Ingeniería de Software; **no constituye asesoría jurídica**. Las conclusiones son **provisionales** porque el equipo todavía no ha inspeccionado el contenido real de los 204 registros `wsl_bash_history` ni de los registros de Windows. El contexto del proyecto indica que estos registros **pueden** contener usuarios, rutas, IP y nombres de scripts, pero eso debe **verificarse** (sección 2.3). Donde algo no está confirmado se indica como **«pendiente de confirmación»**.
-
-**Normas citadas:**
-- **Ley Estatutaria 1581 de 2012** (Régimen General de Protección de Datos Personales).
-- **Decreto 1377 de 2013**, que reglamenta parcialmente la Ley 1581 (hoy compilado en el Decreto Único Reglamentario 1074 de 2015, Libro 2, Parte 2, Título 2, Capítulo 25).
-- **Ley 1266 de 2008** (Hábeas Data), para la clasificación de los datos públicos, semiprivados y privados.
+| **Documento** | `docs/14_seguridad_y_privacidad.md` |
+| **Título** | Análisis de seguridad y privacidad de datos personales (Ley 1581 de 2012) |
+| **Versión** | Ronda 2 — actualizada con métricas reales post-migración |
+| **Autor** | Jose Miguel Sosa Cartagena |
+| **Equipo** | Juan Sebastian Raigosa Gil, Jose Miguel Sosa Cartagena, Deysi Carolina Echavarria Soto |
+| **Motor / herramienta** | PostgreSQL 18 / DBeaver 26.2.2 |
+| **Repositorio** | https://github.com/desarrollosebas/Trabajofinal |
+| **Fecha** | 17 de noviembre de 2026 |
 
 ---
 
-## 1. Datos potencialmente sensibles identificados
+# 14. Seguridad y privacidad de datos personales
 
-Según el contexto del proyecto, la tabla `context` de OpenCEM (25.178 registros) incluye fuentes con posible información de personas:
+## 14.1 Propósito y alcance
 
-| Fuente (`$.source`) | Registros | Qué podría contener (según el contexto del proyecto) | Riesgo preliminar |
-|---|---:|---|---|
-| `wsl_bash_history` | 204 | Comandos de terminal Linux ejecutados por investigadores: nombres de usuario, rutas de carpetas personales (`/home/usuario/...`), nombres de scripts, direcciones IP internas y parámetros de configuración. | **Alto** |
-| `windows_event_log` | 6.271 | Eventos de Windows: inicios de sesión, nombres de usuarios del sistema, servicios iniciados, rutas de archivos del sistema. | **Alto** |
-| `workstation1_log` | 6.028 | Tareas de cómputo ejecutadas, GPU utilizadas, procesos y duración. | **Medio** (pendiente de inspección) |
-| `workstation2_log` | 8.902 | Igual que el anterior. | **Medio** (pendiente de inspección) |
-| `derived_context_pipeline` | 3.708 | Eventos climáticos y solares derivados. | **Bajo** (no describe personas) |
-| `manual entry` | 60 | Calendario institucional (festivos, exámenes). | **Bajo** |
-| `manual_workload_entry` | 5 | Pruebas de carga programadas. | **Bajo** |
+Este documento analiza el tratamiento de datos personales dentro de SolarDB a la luz de la **Ley Estatutaria 1581 de 2012** (Régimen General de Protección de Datos Personales), el **Decreto 1377 de 2013** que la reglamenta parcialmente, y la **Ley 1266 de 2008** (Habeas Data financiero), esta última únicamente para descartar su aplicación.
 
-Los datos de **telemetría eléctrica** (`analog_measurements`: voltajes, corrientes, potencias, temperaturas) describen equipos, no personas, y no son datos personales.
+Con la migración concluida, el análisis deja de ser teórico: se apoya en las cantidades reales verificadas en la base de datos, en particular los **25,178 registros de contexto operativo** migrados a `solardb.registro_contexto`, de los cuales **204 provienen de la fuente `wsl_bash_history`** (comandos de terminal Linux) y se clasifican como de **riesgo crítico** por contener nombres de usuario, rutas e IPs.
 
----
+> **Nota de alcance.** Este es un análisis académico elaborado para el curso de Bases de Datos I. No constituye concepto jurídico profesional ni sustituye la revisión de un abogado habilitado.
 
-## 2. Análisis legal
+## 14.2 Resumen ejecutivo de métricas de privacidad
 
-### 2.1 ¿Es aplicable la Ley 1581 de 2012?
+| Indicador | Valor real verificado |
+|---|---|
+| Filas de telemetría eléctrica aceptadas (`solardb.lectura_telemetria`) | 2,965,337 |
+| Filas en cuarentena (`calidad.registro_cuarentena`) | 24,422 |
+| Registros de contexto migrados (`solardb.registro_contexto`) | 25,178 (100%) |
+| Registros de contexto con datos personales críticos (`wsl_bash_history`) | **204** |
+| Registros de contexto rechazados en la migración (lote 6) | 0 |
+| Esquema donde reside el dato personal | `solardb` |
+| Medida técnica de marcado | `contiene_datos_personales BOOLEAN NOT NULL DEFAULT FALSE` |
+| Almacenamiento de `registro_contexto` | 26 MB (17 MB datos, 9.3 MB índices) |
 
-- **Art. 2 (ámbito de aplicación):** la ley rige el tratamiento de datos personales efectuado en territorio colombiano. El equipo descarga, almacena y procesa el dataset en Colombia (PostgreSQL local de cada integrante y repositorio de trabajo), por lo que, **si el dataset contiene datos personales**, el tratamiento que hace el equipo queda dentro del ámbito de la ley. Esto no excluye que el país de origen de los datos (China) tenga su propia normativa; su análisis queda **fuera del alcance** de este documento.
-- **Art. 3, literal c (definición de dato personal):** es cualquier información vinculada o que pueda asociarse a una o varias personas naturales determinadas o determinables. Un nombre de usuario, una ruta como `/home/<usuario>/` o una IP que identifique el equipo de una persona **puede** asociarse a un investigador determinable, aunque no aparezca su nombre completo.
-- **Art. 3, literal g (definición de Tratamiento):** cualquier operación sobre datos personales, como recolección, almacenamiento, uso, circulación o supresión. Cargar los registros en PostgreSQL, consultarlos y publicarlos en un repositorio son operaciones de Tratamiento.
+**Conclusión principal:** los 2,965,337 registros de telemetría y los 24,422 de cuarentena contienen magnitudes eléctricas de inversores, por lo que **no son datos personales**. La exposición de privacidad se concentra en `solardb.registro_contexto`, que representa una fracción pequeña del volumen total, pero con contenido potencialmente identificador.
 
-### 2.2 Clasificación de los datos personales
+## 14.3 Inventario y clasificación de los datos
 
-Las categorías público, semiprivado y privado provienen de la **Ley 1266 de 2008, art. 3** (literales f, g y h) y el **Decreto 1377 de 2013, art. 3** define dato público y dato sensible. La Ley 1581 define el **dato sensible** en su **art. 5**.
+### 14.3.1 Telemetría eléctrica y cuarentena
 
-| Categoría | Definición resumida | ¿Aplica a SolarDB? |
+La tabla `solardb.lectura_telemetria` (46 columnas) registra voltajes, corrientes, potencias, frecuencias, temperaturas, porcentajes y resistencia de aislamiento de dos inversores. La tabla `calidad.registro_cuarentena` conserva en formato JSONB las filas aisladas por las reglas de calidad. Ninguna de estas variables se refiere a una persona natural determinada o determinable, por lo que **quedan fuera del concepto de dato personal** del artículo 3, literal (c), de la Ley 1581 de 2012.
+
+### 14.3.2 Registros de contexto operativo (25,178)
+
+El campo `source`, contenido dentro del JSONB `valor`, identifica la fuente de cada registro:
+
+| Fuente (`source`) | Registros | Contenido | ¿Datos personales? | Nivel de riesgo |
+|---|---|---|---|---|
+| `workstation2_log` | 8,902 | Logs GPU/CPU de la estación 2 | Posible (nombres de tareas) | Medio |
+| `windows_event_log` | 6,271 | Eventos de Windows | Sí (nombres de usuario) | Alto |
+| `workstation1_log` | 6,028 | Logs de tareas de la estación 1 | Posible | Medio |
+| `derived_context_pipeline` | 3,708 | Eventos climáticos y solares | No | Bajo |
+| `wsl_bash_history` | **204** | **Comandos de terminal Linux** | **Sí (nombres de usuario, rutas, IPs)** | **Crítico** |
+| `manual entry` | 60 | Calendario institucional | No | Bajo |
+| `manual_workload_entry` | 5 | Pruebas de carga | No | Bajo |
+| **Total** | **25,178** | | | |
+
+Verificación de cuadratura: 8,902 + 6,271 + 6,028 + 3,708 + 204 + 60 + 5 = **25,178**.
+
+### 14.3.3 Por qué `wsl_bash_history` es la fuente crítica
+
+Un historial de comandos de terminal revela quién ejecutó acciones en un equipo (nombre de usuario en rutas como `/home/<usuario>/`), qué recursos de red consultó (direcciones IP, hosts) y qué estructura de archivos maneja. Un usuario identificable asociado a una conducta digital es, en principio, un **dato personal** (art. 3, literal c). Además, por su naturaleza, un historial de terminal puede contener por descuido contraseñas, tokens o claves escritas en línea de comandos; esto es un riesgo de seguridad adicional (principio de seguridad, art. 4 literal g) que debe verificarse antes de cualquier publicación.
+
+> No se afirma que los 204 registros contengan credenciales; se afirma que **pueden** contenerlas y que por eso se tratan con el máximo nivel de cautela.
+
+### 14.3.4 ¿Datos sensibles?
+
+El artículo 5 define como sensibles los datos que afectan la intimidad del Titular o cuyo uso indebido puede generar discriminación (origen racial o étnico, orientación política, convicciones religiosas o filosóficas, afiliación sindical, salud, vida sexual, datos biométricos, entre otros). Los nombres de usuario, rutas e IPs de los logs **no encajan en esa lista**; se clasifican como **datos personales privados o semiprivados de carácter común**. Si una revisión posterior encontrara en el contexto algún dato del artículo 5, aplicaría el régimen reforzado de tratamiento de datos sensibles.
+
+## 14.4 Medida técnica en la base de datos: `contiene_datos_personales`
+
+### 14.4.1 Definición
+
+En `solardb.registro_contexto` (6 columnas) existe la columna:
+
+```sql
+contiene_datos_personales BOOLEAN NOT NULL DEFAULT FALSE
+```
+
+- **BOOLEAN:** solo admite verdadero o falso; ocupa 1 byte y permite filtrar con un predicado simple.
+- **NOT NULL:** impide el estado ambiguo "no se sabe"; cada registro debe estar clasificado.
+- **DEFAULT FALSE:** un registro nuevo se considera sin datos personales hasta que se marque, por lo que **el proceso de carga debe marcar explícitamente como TRUE** las fuentes con datos personales (ver 14.4.4).
+
+La tabla también define `valor JSONB NOT NULL CHECK (jsonb_typeof(valor) = 'object')`, que garantiza una estructura de objeto y permite inspeccionar el contenido, y `lote_id`, que vincula cada registro con el lote auditado en `calidad.lote_carga` (trazabilidad de origen).
+
+### 14.4.2 Función de la columna
+
+1. **Filtrado:** separar rápidamente el contexto con datos personales del que no los tiene.
+2. **Auditoría:** contar y listar qué registros requieren protección, y demostrarlo ante el profesor o ante una autoridad.
+3. **Soporte de derechos del Titular:** localizar los registros sobre los que se ejerza una consulta, rectificación o supresión (arts. 8 y 15).
+4. **Minimización en la publicación:** excluir los registros marcados al compartir el dataset o el informe.
+
+### 14.4.3 Consultas de auditoría
+
+Conteo por fuente y por marca (la suma de `total_registros` debe ser 25,178):
+
+```sql
+SELECT valor->>'source'                                  AS fuente,
+       COUNT(*)                                          AS total_registros,
+       COUNT(*) FILTER (WHERE contiene_datos_personales) AS marcados_con_datos_personales
+FROM   solardb.registro_contexto
+GROUP  BY valor->>'source'
+ORDER  BY total_registros DESC;
+```
+
+Verificación de la fuente crítica (debe devolver 204 en `total_registros`):
+
+```sql
+SELECT COUNT(*) AS total_registros,
+       COUNT(*) FILTER (WHERE contiene_datos_personales) AS marcados
+FROM   solardb.registro_contexto
+WHERE  valor->>'source' = 'wsl_bash_history';
+```
+
+Si `marcados` fuera menor que 204, la marca debe corregirse con un `UPDATE` auditado:
+
+```sql
+UPDATE solardb.registro_contexto
+SET    contiene_datos_personales = TRUE
+WHERE  valor->>'source' IN ('wsl_bash_history', 'windows_event_log')
+AND    contiene_datos_personales = FALSE;
+```
+
+> Ejecute primero la consulta de verificación y conserve el resultado; el `UPDATE` solo se aplica si hay diferencias.
+
+### 14.4.4 Medidas complementarias recomendadas (propuesta, no ejecutadas)
+
+Las siguientes medidas **no forman parte de lo migrado**; se proponen como mejora y deben presentarse como tales en la sustentación.
+
+**a) Vista de acceso sin datos personales**
+
+```sql
+CREATE VIEW solardb.v_registro_contexto_publico AS
+SELECT *
+FROM   solardb.registro_contexto
+WHERE  contiene_datos_personales = FALSE;
+```
+
+Para producción conviene listar las columnas explícitamente en lugar de `SELECT *`.
+
+**b) Separación de privilegios por rol**
+
+```sql
+CREATE ROLE rol_analista_contexto NOLOGIN;
+GRANT USAGE ON SCHEMA solardb TO rol_analista_contexto;
+GRANT SELECT ON solardb.v_registro_contexto_publico TO rol_analista_contexto;
+REVOKE ALL ON solardb.registro_contexto FROM rol_analista_contexto;
+```
+
+El rol analista no accede a la tabla base, solo a la vista filtrada. Las credenciales reales de cada usuario se gestionan fuera del repositorio.
+
+**c) Seudonimización o supresión de los registros críticos:** sustituir nombres de usuario y direcciones IP por valores genéricos dentro del JSONB, o eliminar los registros `wsl_bash_history` cuando ya no se requieran para la finalidad académica.
+
+**d) Retención:** definir un plazo de conservación y eliminar al vencimiento (principio de finalidad y necesidad, art. 4 lit. b).
+
+## 14.5 Análisis legal según la Ley 1581 de 2012
+
+### 14.5.1 Ámbito de aplicación (art. 2)
+
+La ley se aplica al tratamiento de datos personales en bases de datos que los hagan susceptibles de tratamiento por entidades públicas o privadas, cuando el tratamiento se realiza en territorio colombiano. El dataset OpenCEM proviene de un campus en Shenzhen, pero SolarDB lo almacena y procesa en Colombia (PostgreSQL y DBeaver ejecutados por estudiantes de una institución colombiana). Ese tratamiento local es el que se analiza. Quedan fuera las bases de datos mantenidas en un ámbito exclusivamente personal o doméstico; un proyecto universitario no cabe en esa excepción cuando maneja datos de terceros.
+
+### 14.5.2 Definiciones (art. 3)
+
+| Concepto (art. 3) | Aplicación en SolarDB |
+|---|---|
+| **Dato personal** (lit. c): información vinculada o que pueda asociarse a personas naturales determinadas o determinables | Nombres de usuario, rutas e IPs de los logs de contexto |
+| **Base de datos** (lit. b): conjunto organizado de datos personales objeto de tratamiento | `solardb.registro_contexto`, en cuanto contiene datos personales |
+| **Titular** (lit. f) | Personas que operaron las estaciones y terminales del campus |
+| **Responsable del Tratamiento** (lit. e): decide sobre la base de datos y/o el tratamiento | Equipo del proyecto y la institución, respecto de la copia en SolarDB |
+| **Encargado del Tratamiento** (lit. d): trata datos por cuenta del Responsable | No existe un tercero encargado; PostgreSQL se ejecuta localmente |
+| **Tratamiento** (lit. g): cualquier operación sobre datos personales | Migración, almacenamiento, consulta y eventual publicación |
+| **Autorización** (lit. a): consentimiento previo, expreso e informado | Ver 14.5.5 |
+
+### 14.5.3 Principios (art. 4)
+
+| Principio | Cómo se aplica en SolarDB |
+|---|---|
+| **Legalidad** (lit. a) | El tratamiento se rige por la Ley 1581 y su reglamentación |
+| **Finalidad** (lit. b) | Los logs se usan solo para correlacionar contexto operativo con la telemetría en un trabajo académico |
+| **Libertad** (lit. c) | Se requiere autorización previa del Titular salvo las excepciones del art. 10 |
+| **Veracidad o calidad** (lit. d) | Los datos se migran sin alteración y con el lote de origen registrado (`lote_id`) |
+| **Transparencia** (lit. e) | El Titular puede conocer qué datos suyos se tratan; la marca booleana facilita responder |
+| **Acceso y circulación restringida** (lit. f) | Propuesta de vista y roles (14.4.4); no publicar los registros marcados |
+| **Seguridad** (lit. g) | Separación por esquemas, control de acceso, no incluir credenciales en el repositorio |
+| **Confidencialidad** (lit. h) | Deber de reserva de quienes accedan a los registros marcados |
+
+### 14.5.4 Datos sensibles y menores (arts. 5 y 7)
+
+- **Art. 5:** según 14.3.4, los datos de los logs no son sensibles; se debe vigilar que ningún registro de contexto contenga datos de esa categoría.
+- **Art. 7:** el tratamiento de datos de niños, niñas y adolescentes está restringido a los de naturaleza pública y a los que respeten su interés superior. Se asume que los Titulares son personal adulto del campus; no se identificaron datos de menores en las fuentes descritas.
+
+### 14.5.5 Derechos del Titular, autorización y excepciones (arts. 8, 9 y 10)
+
+**Derechos (art. 8):** conocer, actualizar y rectificar sus datos; solicitar prueba de la autorización otorgada; ser informado del uso dado a sus datos; presentar quejas ante la Superintendencia de Industria y Comercio (SIC); revocar la autorización y/o solicitar la supresión del dato cuando no se respeten los principios, derechos y garantías; y acceder en forma gratuita a sus datos.
+
+**Autorización (art. 9):** el tratamiento requiere autorización previa e informada del Titular, que puede darse por escrito, oral o mediante conductas inequívocas. En SolarDB no consta en el material disponible una autorización específica de las personas cuyos datos aparecen en los logs; esta carencia debe declararse con honestidad en la sustentación.
+
+**Excepciones (art. 10):** no se requiere autorización, entre otros casos, para información requerida por una entidad pública en ejercicio de sus funciones, datos de naturaleza pública, casos de urgencia médica o sanitaria, tratamiento autorizado por la ley con fines históricos, estadísticos o científicos, y datos del registro civil. El dataset OpenCEM se encuentra publicado en un repositorio abierto (Zenodo) y su uso es con fines científicos y académicos, lo que respalda la finalidad, pero **no sustituye** el análisis de si una excepción aplica a cada registro con datos personales. La postura prudente del equipo es **minimizar**: no republicar ni difundir los registros marcados.
+
+### 14.5.6 Deber de informar, suministro y reclamos (arts. 12, 13 y 15)
+
+- **Art. 12:** al solicitar la autorización, el Responsable debe informar la finalidad del tratamiento, el carácter facultativo de las respuestas sobre datos sensibles, los derechos del Titular y la identificación del Responsable. El aviso de la sección 14.7 cumple este propósito.
+- **Art. 13:** la información solo puede suministrarse al Titular, a sus causahabientes o representantes, a entidades públicas o administrativas en ejercicio de sus funciones y a terceros autorizados por el Titular o por la ley. Esto fundamenta que el equipo no comparta los registros marcados con terceros.
+- **Art. 15 (reclamos):** el Titular que considere que sus datos deben ser corregidos, actualizados o suprimidos, o advierta un presunto incumplimiento, puede presentar un reclamo ante el Responsable. El reclamo se atiende en un máximo de quince (15) días hábiles contados desde su recibo, prorrogables en los términos de la ley. Para esto, la columna `contiene_datos_personales` y el `lote_id` permiten localizar y, si procede, suprimir o seudonimizar los registros.
+
+### 14.5.7 Deberes de Responsables y Encargados (arts. 17 y 18)
+
+| Deber | Artículo | Estado en SolarDB |
 |---|---|---|
-| **Dato público** | El que no es semiprivado, privado o sensible (por ejemplo, los relativos al estado civil, la profesión o la calidad de comerciante). | **No** como regla general. Que el dataset esté publicado en Zenodo **no convierte automáticamente** en «dato público» (en el sentido legal) los comandos o usuarios que contiene. |
-| **Dato semiprivado** | Dato que no tiene naturaleza íntima, reservada ni pública, y cuyo conocimiento interesa a su titular y a cierto sector o a la sociedad. | **Posible**: usuarios del sistema, nombres de equipos, tareas de cómputo asociadas a una persona. |
-| **Dato privado** | Dato de naturaleza íntima o reservada, relevante solo para el titular. | **Posible**: historial de comandos personales (`wsl_bash_history`), rutas de carpetas personales. |
-| **Dato sensible** (Ley 1581, art. 5) | Afecta la intimidad del Titular o su uso indebido puede generar discriminación (origen racial o étnico, orientación política, convicciones religiosas, pertenencia a sindicatos, salud, vida sexual, datos biométricos). | **No se ha identificado ninguno**, y el equipo **no debe inferirlos**. Si durante la inspección apareciera uno, se aplica el **art. 6** (el Tratamiento de datos sensibles está prohibido salvo excepciones) y se elimina del repositorio. |
+| Garantizar al Titular el ejercicio del hábeas data | 17 | Posible gracias a la marca y la trazabilidad por lote |
+| Solicitar y conservar copia de la autorización | 17 | **Pendiente:** no hay evidencia de autorización individual |
+| Informar la finalidad y los derechos | 17 | Cubierto por el aviso de la sección 14.7 |
+| Conservar la información con seguridad | 17 | Parcial: esquemas separados, sin credenciales en repositorio; faltan roles y cifrado |
+| Garantizar veracidad, actualización y rectificación | 17 | Datos migrados sin alteración; la rectificación se haría por `UPDATE` auditado |
+| Tramitar consultas y reclamos | 17 | Procedimiento descrito en 14.5.6 |
+| Informar a la SIC sobre violaciones de seguridad | 17 | Aplica en caso de incidente |
+| Deberes equivalentes de seguridad, confidencialidad y trámite de reclamos | 18 | No aplica de momento: no hay Encargado externo; si se usara un servicio en la nube, se exigiría contrato de tratamiento |
 
-> **Conclusión provisional:** los registros `wsl_bash_history` y `windows_event_log` deben tratarse, por precaución, como **datos personales privados o semiprivados**. Los demás registros y toda la telemetría eléctrica no se consideran datos personales, **salvo que la inspección demuestre lo contrario**.
+### 14.5.8 Normas relacionadas
 
-### 2.3 Auditoría necesaria antes de concluir (pendiente)
+- **Decreto 1377 de 2013:** reglamenta aspectos de autorización, políticas de tratamiento y aviso de privacidad. Sustenta el aviso simplificado de la sección 14.7.
+- **Ley 1266 de 2008:** regula el hábeas data financiero, crediticio y comercial. **No aplica** a SolarDB, que no trata información de ese tipo.
 
-Para sustentar la clasificación con evidencia, el equipo debe revisar el contenido real. Consultas sugeridas, una vez cargado `registro_contexto`:
+## 14.6 Roles de tratamiento
 
-```sql
--- ¿Qué claves tiene el JSON en cada fuente?
-SELECT fuente_contexto, k, count(*)
-FROM solardb.registro_contexto,
-     LATERAL jsonb_object_keys(valor) AS k
-GROUP BY fuente_contexto, k
-ORDER BY fuente_contexto, count(*) DESC;
-
--- ¿Aparecen rutas de usuario en los comandos de terminal?
-SELECT count(*)
-FROM solardb.registro_contexto
-WHERE fuente_contexto = 'wsl_bash_history'
-  AND valor::text ~ '/home/[^/"[:space:]]+';
-
--- ¿Aparecen direcciones IPv4?
-SELECT fuente_contexto, count(*)
-FROM solardb.registro_contexto
-WHERE valor::text ~ '\m(\d{1,3}\.){3}\d{1,3}\M'
-GROUP BY fuente_contexto;
-```
-
-> El resultado de estas consultas permite pasar la tabla de la sección 1 de «posible» a «confirmado». Se recomienda hacerlas **solo en el computador local** y sin copiar resultados con datos reales al repositorio.
-
-### 2.4 Roles según la Ley 1581 (art. 3)
-
-| Rol | Definición legal (resumida) | Quién es en SolarDB | Observación |
-|---|---|---|---|
-| **Titular** (art. 3, literal f) | Persona natural cuyos datos son objeto de Tratamiento. | Las personas (investigadores o usuarios de las estaciones de trabajo y sistemas) cuya actividad quedó registrada en `wsl_bash_history`, `windows_event_log` y los logs de estaciones. | Cantidad e identidad **desconocidas** para el equipo. |
-| **Responsable del Tratamiento** (art. 3, literal e) | Persona que por sí misma o con otros decide sobre la base de datos y el Tratamiento. | **(a)** Los autores y la institución que recolectaron y publicaron OpenCEM (responsables del dataset original). **(b)** El **equipo del Taller 6** (Raigosa Gil, Sosa Cartagena y Echavarria Soto), que decide para qué y cómo se procesa **su copia** en SolarDB. | La responsabilidad de (b) es limitada a su propio tratamiento académico. **Pendiente de confirmar con el docente** si la institución universitaria se considera la responsable. |
-| **Encargado del Tratamiento** (art. 3, literal d) | Persona que realiza el Tratamiento **por cuenta del Responsable**. | **Ninguno formal** mientras la base de datos corra en los equipos locales de los integrantes. Si se usara un servicio de terceros que procese los datos por cuenta del equipo (por ejemplo, un PostgreSQL alojado en la nube), ese proveedor sería Encargado. | GitHub almacena el código del repositorio; por eso **no deben subirse datos crudos** (sección 5). |
-
-### 2.5 Principios del Tratamiento (art. 4) — evaluación
-
-| Principio (art. 4) | Qué exige | Evaluación del proyecto | Medida |
-|---|---|---|---|
-| **a) Legalidad** | El Tratamiento es una actividad reglada, sujeta a la ley. | **Parcial.** El equipo aplica la ley como marco de trabajo; no hay verificación de que el origen de los datos cumpla la normativa de su país. | Documentar el análisis (este archivo) y citar la fuente del dataset. |
-| **b) Finalidad** | El Tratamiento debe obedecer a una finalidad legítima, informada al Titular. | **Cumple en lo académico**: la finalidad es un trabajo universitario sobre integridad y calidad de datos, no la identificación de personas. | Declarar la finalidad en el aviso de privacidad (sección 4) y no usar los datos para ningún otro propósito. |
-| **c) Libertad** | El Tratamiento solo puede ejercerse con el consentimiento previo, expreso e informado del Titular, salvo excepciones legales. | **En riesgo / pendiente.** El equipo no obtuvo consentimiento de los Titulares. Dos normas pueden ser relevantes: el **art. 10, literal d** (no se requiere autorización para tratamiento autorizado por la ley con fines históricos, estadísticos o científicos) y el **art. 6, literal e** (para datos sensibles con finalidad histórica, estadística o científica, se deben adoptar medidas que supriman la identidad de los Titulares). **Su aplicación al caso es una interpretación a confirmar** con el docente o un asesor. | Aplicar la **supresión de identidad** (anonimización) antes de cualquier análisis o publicación. |
-| **d) Veracidad o calidad** | La información debe ser veraz, completa, exacta, actualizada, comprobable y comprensible. | **Cumple.** Es el eje de SolarDB: reglas de calidad, cuarentena y trazabilidad por lote (`calidad.lote_carga`). | Conservar los valores originales en la cuarentena y no alterar el significado de los datos. |
-| **e) Transparencia** | Se debe garantizar al Titular el derecho a obtener información sobre sus datos. | **Parcial.** Los Titulares no tienen canal de contacto con el equipo. | Aviso de privacidad con un contacto del equipo (sección 4). |
-| **f) Acceso y circulación restringida** | Los datos personales no se publican en Internet ni medios masivos, salvo que el acceso sea controlado. | **En riesgo** si se suben datos al repositorio de GitHub. | No subir datos crudos; restringir el acceso por esquemas, roles y vistas (sección 3). |
-| **g) Seguridad** | La información se maneja con medidas técnicas, humanas y administrativas para evitar adulteración, pérdida, consulta o acceso no autorizado. | **Parcial**, depende de las medidas aplicadas. | Roles, vistas, `.gitignore`, sin credenciales en el repositorio (secciones 3 y 5). |
-| **h) Confidencialidad** | Quienes intervengan en el Tratamiento deben garantizar la reserva de la información. | **Parcial.** | Los tres integrantes se comprometen a no compartir los registros con datos personales fuera del trabajo. |
-
-**Deberes asociados.** Si el equipo se considera Responsable, el **art. 17** le exige, entre otros, garantizar el hábeas data, conservar la información bajo condiciones de seguridad que impidan su adulteración, pérdida o acceso no autorizado, e informar al Titular la finalidad. Si participara un Encargado, el **art. 18** fija deberes equivalentes. El **art. 12** establece el deber de informar al Titular, como mínimo, la finalidad del Tratamiento y sus derechos, y el **art. 9** exige autorización previa e informada, salvo las excepciones del **art. 10**.
-
-**Derechos de los Titulares (art. 8):** conocer, actualizar y rectificar sus datos; pedir prueba de la autorización; ser informados del uso; presentar quejas ante la Superintendencia de Industria y Comercio (autoridad de protección de datos, **art. 19**); **revocar la autorización o solicitar la supresión** del dato (literal e); y acceder gratuitamente a sus datos.
-
-**Transferencias (art. 26):** la ley prohíbe transferir datos personales a países que no ofrezcan niveles adecuados de protección. Publicar datos personales en un repositorio alojado en servidores en el exterior podría equivaler a una transferencia, razón adicional para **no subir datos crudos**.
-
----
-
-## 3. Medidas técnicas propuestas
-
-Las medidas buscan la **minimización**: tratar solo los datos necesarios para la finalidad. Para el análisis de calidad de la telemetría no se necesita saber quién escribió un comando, solo que el evento existió y cuándo.
-
-> **Importante:** los scripts de esta sección son ejemplos de diseño, **no han sido ejecutados contra los datos reales**. Los patrones deben probarse sobre una muestra local antes de usarse. **Pendiente de confirmación por el coordinador** su integración en el script de migración.
-
-### 3.1 Anonimización de usuarios y rutas
-
-**Reemplazo de rutas personales** (`/home/<usuario>/...`):
-
-```sql
--- Sustituye el nombre de usuario en rutas Linux por un valor genérico
-SELECT regexp_replace(valor::text, '/home/[^/"[:space:]]+', '/home/usuario_anonimo', 'g')::jsonb
-FROM staging.staging_contexto;   -- tabla de aterrizaje (pendiente de confirmación)
-```
-
-**Seudonimización de usuarios** (para poder contar «usuarios distintos» sin saber quiénes son), con la extensión `pgcrypto` y una **sal** que se entrega por variable de `psql` y **nunca se escribe en un archivo del repositorio**:
-
-```sql
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-
--- La sal se pasa al iniciar psql con:  -v sal='...'   (valor que NO se guarda en el repositorio)
-SELECT encode(hmac('<nombre_de_usuario>', :'sal', 'sha256'), 'hex');
-```
-
-> Una seudonimización con sal **no es anonimización total**: quien posea la sal podría reidentificar. Por eso la sal no se comparte ni se versiona. Los nombres de usuario de Windows están dentro de claves JSON que **aún no se conocen** (auditoría de la sección 2.3); el patrón se define después de inspeccionarlas.
-
-### 3.2 Enmascaramiento de IP y nombres de equipo
-
-```sql
--- Enmascara los dos últimos octetos de IPv4: 10.1.23.45  ->  10.1.x.x
-SELECT regexp_replace(valor::text,
-       '\m(\d{1,3})\.(\d{1,3})\.\d{1,3}\.\d{1,3}\M', '\1.\2.x.x', 'g')::jsonb
-FROM staging.staging_contexto;
-```
-
-- El patrón puede afectar cadenas con forma de IP que sean versiones de software (por ejemplo, `1.2.3.4`). Se acepta el falso positivo, porque es preferible enmascarar de más.
-- Los nombres de equipo (hostnames) se reemplazan por alias genéricos (`equipo_01`, `equipo_02`) mediante una tabla de equivalencias que se guarda **solo en el equipo local**, no en el repositorio. Los hostnames reales **no se conocen** todavía (pendiente de auditoría).
-
-### 3.3 Separación en esquemas y roles de acceso restringido
-
-Aprovecha la separación de esquemas definida en `docs/09_diseno_fisico.md`:
-
-```sql
--- Rol sin inicio de sesión: agrupa permisos (no tiene contraseña)
-CREATE ROLE rol_analista NOLOGIN;
-
-GRANT USAGE ON SCHEMA solardb TO rol_analista;
-
--- El analista NO puede leer la tabla con el JSON completo...
-REVOKE ALL ON solardb.registro_contexto FROM rol_analista;
-
--- ...solo la vista sin datos personales (sección 3.5)
-GRANT SELECT ON solardb.v_contexto_sin_personales TO rol_analista;
-
--- Telemetría y catálogos no contienen datos personales
-GRANT SELECT ON solardb.lectura_telemetria TO rol_analista;
-```
-
-- Los roles con inicio de sesión (`LOGIN`) se crean **de forma local** y su contraseña se define con `\password` en `psql` o con DBeaver, **nunca en un archivo `.sql` versionado**.
-- La tabla `staging.*` (datos crudos) y `calidad.registro_cuarentena` (copia completa de filas rechazadas, en JSONB) deben quedar **sin permisos para el rol de analista**.
-
-### 3.4 Política de retención y eliminación (propuesta)
-
-| Dato | Retención propuesta | Eliminación |
+| Rol | Quién | Observación |
 |---|---|---|
-| `staging.*` (datos crudos) | Solo durante la migración y su verificación | `TRUNCATE` al cerrar el lote exitoso. |
-| `registro_contexto` con `contiene_datos_personales = TRUE` | Únicamente en versión **anonimizada** | El valor original no se conserva en la base final. |
-| `registro_cuarentena` | Mientras haya registros `PENDIENTE` | Eliminar o anonimizar cuando se resuelva. |
-| Copias de la base de datos o del SQLite original | Solo en el equipo local de cada integrante | Borrarlas al finalizar el semestre 2026-II, una vez cerrada la evaluación del taller. **Plazo exacto pendiente de acordar con el equipo y el docente.** |
+| **Titulares** | Personas del campus de origen cuyos nombres de usuario, rutas o IPs aparecen en los logs | No participan directamente en el proyecto |
+| **Responsable** | Equipo del proyecto SolarDB, bajo la institución y la supervisión del docente | Decide finalidad y medios del tratamiento en el ámbito académico |
+| **Encargado** | Ninguno | Base local; ningún tercero trata datos por cuenta del equipo |
+| **Fuente de origen** | Autores del dataset OpenCEM | Bartels et al. (2026) |
 
-Si un Titular solicitara la supresión de sus datos (**art. 8, literal e** de la Ley 1581; **art. 9 del Decreto 1377 de 2013**), el equipo eliminará los registros asociados.
+## 14.7 Aviso de privacidad simplificado
 
-### 3.5 Vistas que excluyen campos sensibles
-
-Se añade la marca `contiene_datos_personales` (véase `docs/08_diccionario_datos.md`, tabla `registro_contexto`). **Regla propuesta:** `TRUE` para `wsl_bash_history` y `windows_event_log`; para los logs de estaciones, **según el resultado de la auditoría** (sección 2.3).
-
-```sql
--- Vista segura: oculta el JSON de los registros marcados con datos personales
-CREATE VIEW solardb.v_contexto_sin_personales AS
-SELECT contexto_id,
-       fuente_contexto,
-       ts_contexto,
-       CASE WHEN contiene_datos_personales THEN NULL ELSE valor END AS valor
-FROM solardb.registro_contexto;
-```
-
-La vista conserva el hecho de que el evento existió (fuente y fecha), útil para correlacionar con la telemetría, pero **no expone el contenido** de los registros con posibles datos personales.
-
----
-
-## 4. Aviso de privacidad simplificado (proyecto académico)
-
-El **Decreto 1377 de 2013, art. 15** exige que el aviso contenga como mínimo: el nombre y datos de contacto del Responsable, el Tratamiento y su finalidad, los derechos del Titular y los mecanismos para conocer la política de tratamiento. Propuesta de texto:
-
-> **AVISO DE PRIVACIDAD — Proyecto SolarDB (Taller 6, Bases de Datos I)**
+> **AVISO DE PRIVACIDAD — PROYECTO SOLARDB**
 >
-> **Responsables del tratamiento:** Juan Sebastian Raigosa Gil, Jose Miguel Sosa Cartagena y Deysi Carolina Echavarria Soto, estudiantes de la Institución Universitaria Pascual Bravo (grupo 811, semestre 2026-II), bajo la orientación del docente Ramiro Grisales Montoya.
-> **Contacto:** [correo del equipo — por definir].
+> **Responsable:** Equipo del Taller 6 de Bases de Datos I, Institución Universitaria Pascual Bravo, grupo 811, semestre 2026-II.
 >
-> **Datos tratados:** este proyecto usa el dataset público OpenCEM v1.0.0 (Bartels et al., 2026; DOI 10.5281/zenodo.21436223), compuesto principalmente por telemetría eléctrica de equipos. Una parte menor del dataset (registros de contexto) puede contener información asociada a usuarios de sistemas informáticos, como nombres de usuario, rutas de carpetas, direcciones IP o comandos.
+> **Datos tratados:** registros de contexto operativo de una microrred (logs de estaciones de trabajo, eventos de sistema e historiales de terminal) que pueden contener nombres de usuario, rutas de archivos y direcciones IP.
 >
-> **Finalidad:** exclusivamente académica: estudiar la integridad y calidad de los datos en una base de datos PostgreSQL. **No se utilizan los datos para identificar, evaluar ni contactar a ninguna persona.**
+> **Finalidad:** exclusivamente académica y científica: correlacionar el contexto operativo con la telemetría de los inversores y evaluar la calidad de los datos.
 >
-> **Medidas:** los datos que puedan asociarse a personas se anonimizan o se enmascaran antes del análisis, se separan en esquemas con acceso restringido y **no se publican en el repositorio**. Los datos originales se eliminan al finalizar el semestre.
+> **Derechos del Titular (art. 8, Ley 1581 de 2012):** conocer, actualizar, rectificar y suprimir sus datos, revocar la autorización, solicitar prueba de ella y presentar quejas ante la Superintendencia de Industria y Comercio.
 >
-> **Sus derechos (Ley 1581 de 2012, art. 8):** conocer, actualizar y rectificar sus datos; solicitar prueba de la autorización; ser informado del uso de sus datos; presentar quejas ante la Superintendencia de Industria y Comercio; revocar la autorización o solicitar la supresión de sus datos; y acceder gratuitamente a ellos. Puede ejercerlos escribiendo al contacto indicado.
+> **Medidas:** los registros con datos personales están marcados en la base de datos y no se publican ni se comparten con terceros.
 >
-> **Política de tratamiento:** este aviso y el documento `docs/14_seguridad_y_privacidad.md` del repositorio del proyecto describen cómo se tratan los datos.
+> **Contacto para consultas y reclamos:** jose.sosa216@pascualbravo.edu.co
 
-> **Pendiente:** definir un correo de contacto y confirmar con el docente si el aviso debe presentarse como trabajo individual del equipo o a nombre de la institución.
+## 14.8 Matriz de riesgos
 
----
+| # | Riesgo | Probabilidad | Impacto | Mitigación |
+|---|---|---|---|---|
+| 1 | Publicación de los 204 registros `wsl_bash_history` en el repositorio o informe | Media | Alto | Excluir registros marcados; no subir volcados de contexto a GitHub |
+| 2 | Credenciales o tokens dentro de historiales de terminal | Baja a media | Alto | Revisión previa del contenido; eliminar o enmascarar |
+| 3 | Marca `contiene_datos_personales` incorrecta por el `DEFAULT FALSE` | Media | Medio | Consulta de auditoría 14.4.3 y corrección con `UPDATE` |
+| 4 | Acceso de usuarios sin privilegio a `registro_contexto` | Media | Medio | Vista pública y roles (14.4.4) |
+| 5 | Falta de autorización individual de los Titulares | Alta | Medio | Minimizar, seudonimizar o suprimir; declararlo en la sustentación |
+| 6 | Conservación indefinida de datos personales | Media | Medio | Definir plazo de retención y eliminar al vencimiento |
 
-## 5. Protección del repositorio
+## 14.9 Conclusiones
 
-### 5.1 Lo que el repositorio NO debe contener
+1. De los 2,989,759 registros leídos de telemetría, ninguno es dato personal: 2,965,337 están en producción y 24,422 en cuarentena, todos con magnitudes eléctricas.
+2. La superficie de privacidad está en `solardb.registro_contexto`: 25,178 registros migrados al 100%, de los cuales 204 (`wsl_bash_history`) son de riesgo crítico y 6,271 (`windows_event_log`) contienen nombres de usuario.
+3. La columna `contiene_datos_personales BOOLEAN NOT NULL DEFAULT FALSE` es la medida técnica que permite filtrar, auditar y atender derechos del Titular, siempre que se mantenga correctamente poblada.
+4. El principal pendiente jurídico es la ausencia de evidencia de autorización individual (art. 9); la estrategia es minimizar, no difundir y, cuando proceda, seudonimizar o suprimir.
+5. Las medidas de la sección 14.4.4 son propuestas de mejora y deben presentarse como tales.
 
-| Elemento | Motivo |
-|---|---|
-| **Contraseñas** de PostgreSQL o de cualquier otro sistema | Cualquiera con acceso al repositorio podría usarlas; quedan además en el historial de Git aunque se borren después. |
-| **Cadenas de conexión con credenciales** (por ejemplo, URL del tipo `postgresql://usuario:clave@servidor/base`) | Contienen la contraseña en texto claro. |
-| **Tokens de acceso a GitHub** (*Personal Access Tokens*) | Dan acceso a la cuenta de quien los creó. |
-| **Datos crudos del dataset** (el SQLite de 4,13 GB, CSV, volcados) | Pueden contener datos personales (arts. 4-f y 26 de la Ley 1581) y exceden el tamaño razonable de un repositorio. |
-| **Archivos `.env`** con variables de entorno sensibles | Suelen guardar claves y cadenas de conexión. |
-| **Archivos de configuración de clientes**, como los de DBeaver (`data-sources.json`, `credentials-config.json`) | Pueden guardar conexiones y credenciales. |
-| **Tabla de equivalencias de seudónimos y la sal** de la sección 3.1 | Permitirían reidentificar a las personas. |
+## 14.10 Referencias (APA 7.ª edición)
 
-Los datos que sí pueden ir en el repositorio: scripts DDL **sin credenciales**, documentación, consultas SQL de negocio, y el manifiesto de sumas de verificación (`SHA-256`) del dataset.
+Bartels, T. S., Wu, R., Lu, X., Chen, Y., Lu, Y., Xia, F., Yang, H., Chen, Y., & Li, T. (2026). *OpenCEM: Multimodal photovoltaic and battery microgrid dataset with context records and sky imagery* (Version 1.0.0) [Dataset]. Zenodo. https://doi.org/10.5281/zenodo.21436223
 
-### 5.2 Archivo `.gitignore` sugerido
+Congreso de la República de Colombia. (2008). *Ley 1266 de 2008, por la cual se dictan las disposiciones generales del hábeas data y se regula el manejo de la información contenida en bases de datos personales*.
 
-```gitignore
-# Datos crudos del dataset
-*.sqlite
-*.sqlite3
-*.db
-data/raw/
-data/staging/
-*.dump
-*.backup
+Congreso de la República de Colombia. (2012). *Ley Estatutaria 1581 de 2012, por la cual se dictan disposiciones generales para la protección de datos personales*.
 
-# Credenciales y variables de entorno
-.env
-*.env
-.pgpass
-pgpass.conf
-*.pem
-*.key
-secrets/
-
-# Configuración local de DBeaver
-.dbeaver/
-data-sources*.json
-credentials-config.json
-
-# Tablas de equivalencia de anonimización
-*equivalencias*
-```
-
-> **Pendiente de confirmación por el coordinador:** revisar el `.gitignore` que ya exista en el repositorio y añadir solo lo que falte, para no duplicar reglas.
-
-### 5.3 Buenas prácticas
-
-1. **Las credenciales se piden al momento de conectarse** (DBeaver las solicita o las guarda de forma local cifrada) y no se escriben en los scripts.
-2. **Antes de cada `git commit`,** revisar qué se va a subir con `git status` y `git diff --staged`.
-3. **Buscar secretos por descuido** antes de subir, por ejemplo: `git diff --staged | grep -i -E "password|passwd|token|secret|postgresql://"`. Si aparece algo, no se hace el commit.
-4. **El token de GitHub se trata como una contraseña:** no se pega en archivos, capturas de pantalla ni chats, y se le asigna una fecha de vencimiento corta.
-5. **Si un secreto se sube por error:** (a) **revocar de inmediato** el token o cambiar la contraseña, porque borrar el archivo después **no** elimina el secreto del historial de Git; (b) avisar al coordinador para limpiar el historial si fuera necesario.
-6. Los datos que se compartan entre integrantes deben ser **datos anonimizados o sintéticos**, nunca los registros originales con datos personales.
-
----
-
-## 6. Resumen y pendientes
-
-| Aspecto | Conclusión |
-|---|---|
-| Datos personales | Posibles en `wsl_bash_history` (204) y `windows_event_log` (6.271); pendiente de inspección en los logs de estaciones (6.028 y 8.902). |
-| Clasificación | Privados o semiprivados de forma provisional; no se identificaron datos sensibles (art. 5). |
-| Roles | Titulares: personas registradas en los logs. Responsable: autores de OpenCEM y el equipo respecto de su copia. Encargado: ninguno formal mientras todo sea local. |
-| Principios en mayor riesgo | Libertad (art. 4-c) y acceso y circulación restringida (art. 4-f). |
-| Medidas principales | Anonimización, enmascaramiento de IP, roles, vistas, retención limitada y repositorio sin datos crudos ni credenciales. |
-
-**Pendientes para el coordinador y el docente:**
-1. Inspeccionar el contenido real de los registros de contexto (sección 2.3) y ajustar la clasificación.
-2. Decidir en qué punto de la migración se aplican la anonimización y el enmascaramiento.
-3. Confirmar con el docente si la institución se considera Responsable y si se requiere formalizar el aviso de privacidad.
-4. Verificar la licencia y los términos de uso de OpenCEM en Zenodo.
-5. Definir el correo de contacto y la fecha de eliminación de las copias locales.
-6. Revisar el `.gitignore` del repositorio.
-
----
-
-## 7. Fuentes normativas
-
-- Congreso de la República de Colombia. *Ley Estatutaria 1581 de 2012*, por la cual se dictan disposiciones generales para la protección de datos personales. Diario Oficial 48.587 del 18 de octubre de 2012.
-- Ministerio de Comercio, Industria y Turismo. *Decreto 1377 de 2013*, por el cual se reglamenta parcialmente la Ley 1581 de 2012.
-- Congreso de la República de Colombia. *Ley Estatutaria 1266 de 2008* (Hábeas Data).
-- Bartels, T. S., Wu, R., Lu, X., Chen, Y., Lu, Y., Xia, F., Yang, H., Chen, Y., & Li, T. (2026). *OpenCEM: Multimodal photovoltaic and battery microgrid dataset with context records and sky imagery* (Version 1.0.0) [Dataset]. Zenodo. https://doi.org/10.5281/zenodo.21436223
-
-Este documento no contiene contraseñas, tokens ni cadenas de conexión.
+Presidencia de la República de Colombia. (2013). *Decreto 1377 de 2013, por el cual se reglamenta parcialmente la Ley 1581 de 2012*.
