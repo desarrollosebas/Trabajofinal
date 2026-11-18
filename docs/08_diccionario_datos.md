@@ -1,386 +1,401 @@
-# Diccionario de Datos — SolarDB
+# Diccionario de Datos — SolarDB (versión 2, con métricas reales post-migración)
 
 | | |
 |---|---|
 | **Proyecto** | Taller 6 — Bases de Datos I. SolarDB: integridad y calidad de datos en una microrred híbrida mediante PostgreSQL |
 | **Institución / grupo** | Institución Universitaria Pascual Bravo, grupo 811, semestre 2026-II |
 | **Docente** | Ramiro Grisales Montoya |
-| **Integrante responsable** | Jose Miguel Sosa Cartagena (diccionario de datos, diseño físico, privacidad y documento final) |
-| **Fecha** | 15 de noviembre de 2026 |
+| **Integrante responsable** | Jose Miguel Sosa Cartagena (diccionario de datos, diseño físico, privacidad e informe final) |
+| **Fecha** | 17 de noviembre de 2026 |
+| **Motor y herramientas** | PostgreSQL 18, DBeaver 26.2.2, Git y GitHub |
 | **Dataset** | OpenCEM v1.0.0 (DOI: 10.5281/zenodo.21436223) |
-| **Motor** | PostgreSQL (administración con DBeaver) |
 
-**Cita del dataset:** Bartels, T. S., Wu, R., Lu, X., Chen, Y., Lu, Y., Xia, F., Yang, H., Chen, Y., & Li, T. (2026). *OpenCEM: Multimodal photovoltaic and battery microgrid dataset with context records and sky imagery* (Version 1.0.0) [Dataset]. Zenodo. https://doi.org/10.5281/zenodo.21436223
+**Cita del dataset (APA 7.ª ed.):** Bartels, T. S., Wu, R., Lu, X., Chen, Y., Lu, Y., Xia, F., Yang, H., Chen, Y., & Li, T. (2026). *OpenCEM: Multimodal photovoltaic and battery microgrid dataset with context records and sky imagery* (Version 1.0.0) [Dataset]. Zenodo. https://doi.org/10.5281/zenodo.21436223
 
 ---
 
 ## 1. Introducción y convenciones
 
-Este documento describe, tabla por tabla y columna por columna, el modelo físico de **SolarDB**. El modelo fue propuesto por el coordinador (Juan Sebastian Raigosa Gil) y aún está pendiente de implementación. Todo detalle que no esté confirmado se marca como **«pendiente de confirmación por el coordinador»**, acompañado de un valor propuesto.
+Este documento describe, tabla por tabla y columna por columna, la base de datos **SolarDB** ya implementada y migrada por el coordinador (Juan Sebastian Raigosa Gil). Reemplaza las estimaciones teóricas de la primera versión por los **resultados certificados de la migración**.
 
-### 1.1 Convenciones del documento
+### 1.1 Convenciones
 
-- **Esquemas PostgreSQL:** `solardb` (producción: catálogos y hechos), `staging` (carga temporal) y `calidad` (control de calidad y cuarentena).
-- **Nulabilidad:** `NN` = `NOT NULL`; `NULL` = admite nulos.
-- **Evidencia de la unidad:** todas las unidades de las variables físicas provienen del archivo `column_dictionary.json` de los autores de OpenCEM, campo `unit` del registro de cada variable, y fueron verificadas por el coordinador contra la base SQLite descomprimida (4,13 GB). Para evitar repetir la misma cita 30 veces, la columna «Evidencia» de las tablas indica el registro consultado, siempre bajo esta fuente.
-- **Rango observado:** corresponde al rango verificado empíricamente en `analog_measurements` (no es un límite físico del equipo). Los CHECK de los dominios no se derivan de rangos observados salvo que se indique expresamente, para no declarar como imposible un valor que solo es poco frecuente.
+- **Esquemas PostgreSQL:** `solardb` (producción), `staging` (carga temporal) y `calidad` (reglas, cuarentena y auditoría).
+- **Nulabilidad:** `NN` = `NOT NULL`; `NULL` = admite nulos. La nulabilidad de las columnas de medición corresponde al diseño (~2 % de las lecturas originales tiene nulos por *timeouts* de Modbus); debe verificarse contra el DDL final.
+- **Unidades de medida:** provienen del archivo `column_dictionary.json` de los autores de OpenCEM, campo `unit` de cada variable. Las unidades de las variables de la primera versión fueron verificadas por el coordinador contra la base SQLite. Las 8 variables nuevas (marcadas con **†**) **no tenían evidencia de unidad en el material disponible**: su unidad se **dedujo del dominio** y debe confirmarse en `column_dictionary.json` (sección 10).
+- **Rango observado:** es el rango verificado en la base SQLite (`analog_measurements`); no es un límite físico del equipo.
+- **Cifras:** todas las métricas de las secciones 2 y 8 son las certificadas por la migración y se reproducen **sin redondear**.
 
-### 1.2 Origen de los datos (SQLite original)
+### 1.2 Resumen de objetos del modelo
 
-| Tabla original | Columnas | Filas | Uso en SolarDB |
-|---|---:|---:|---|
-| `analog_measurements` | 44 | 2.989.759 | Origen de `lectura_telemetria` |
-| `context` | 5 | 25.178 | Origen de `registro_contexto` |
-| `status` | 20 | 2.240.052 | Fuera del alcance actual (pendiente de confirmación) |
-| `totals` | 21 | 2.279.918 | Fuera del alcance actual (pendiente de confirmación) |
-| `settings` | 176 | 2.284.775 | Fuera del alcance actual (columnas estáticas redundantes) |
-| `specs` | 16 | 1.333.174 | Fuera del alcance actual (redundancia masiva) |
-| `statistics` | 31 | 2.285.904 | Fuera del alcance actual (contadores de energía histórica) |
-| `fault_history` | 66 | 2.129.517 | Fuera del alcance actual |
-
-### 1.3 Resumen de tablas del modelo
-
-| Esquema | Tabla | Tipo | Filas esperadas |
-|---|---|---|---|
+| Esquema | Objeto | Tipo | Filas reales |
+|---|---|---|---:|
 | `solardb` | `dim_sitio` | Catálogo | 1 |
 | `solardb` | `dim_subsistema` | Catálogo | 2 |
 | `solardb` | `dim_inversor` | Catálogo | 2 |
-| `solardb` | `cat_unidad_medida` | Catálogo | 9 (pendiente de confirmación) |
-| `solardb` | `cat_variable_fisica` | Catálogo | 30 (pendiente de confirmación) |
-| `solardb` | `lectura_telemetria` | Hechos | hasta 2.989.759 |
-| `solardb` | `registro_contexto` | Hechos | hasta 25.178 |
-| `calidad` | `lote_carga` | Calidad | según lotes ejecutados |
-| `calidad` | `regla_calidad` | Calidad | por definir (pendiente de confirmación) |
-| `calidad` | `registro_cuarentena` | Calidad | según reglas aplicadas |
-| `staging` | `staging_telemetria` | Staging | transitoria |
+| `solardb` | `cat_variable_fisica` | Catálogo | 38 o más |
+| `solardb` | `cat_unidad_medida` | Catálogo | unidades V, A, W, VA, Hz, °C, %, kΩ (y las que el DDL añada) |
+| `solardb` | `cat_tipo_contexto` | Catálogo | 7 |
+| `solardb` | `lectura_telemetria` | Hechos | **2.965.337** |
+| `solardb` | `registro_contexto` | Hechos | **25.178** |
+| `calidad` | `lote_carga` | Auditoría | 2 lotes completados (IDs 4 y 6) |
+| `calidad` | `regla_calidad` | Calidad | 6 reglas activas |
+| `calidad` | `registro_cuarentena` | Calidad | **24.422** |
+| `staging` | tabla(s) de aterrizaje | Staging | transitoria (nombres pendientes de confirmación) |
 
 ---
 
-## 2. Dominios personalizados (`CREATE DOMAIN`)
+## 2. Resultados reales de la migración
 
-Los dominios centralizan el tipo y la restricción de una magnitud física. Si cambia una regla, se modifica en un único lugar.
+### 2.1 Balance general
 
-| Dominio | Tipo base | Restricción propuesta | Variables que lo usan | Estado |
-|---|---|---|---|---|
-| `dom_voltaje` | `DOUBLE PRECISION` | `CHECK (VALUE >= 0)` | `battvolt`, `pv1volt`, `outvolta`, `linevolta`, `busvoltp`, `busvoltn` | Pendiente de confirmación |
-| `dom_corriente` | `DOUBLE PRECISION` | Sin restricción de signo | `battcurr` | Pendiente de confirmación |
-| `dom_corriente_no_neg` | `DOUBLE PRECISION` | `CHECK (VALUE >= 0)` | `linechgcurr`, `pvchgcurr`, `pv1curr`, `outcurra`, `linecurra`, `gridcurr_a` | Pendiente de confirmación |
-| `dom_potencia_activa` | `INTEGER` | Sin restricción de signo | `battchgpower`, `linepowerw_a`, `gridpowerw_a` | Pendiente de confirmación |
-| `dom_potencia_activa_no_neg` | `INTEGER` | `CHECK (VALUE >= 0)` | `pv1power`, `outw_a`, `outsumw` | Pendiente de confirmación |
-| `dom_potencia_aparente` | `INTEGER` | `CHECK (VALUE >= 0)` | `outva_a`, `outsumva` | Pendiente de confirmación |
-| `dom_frecuencia` | `DOUBLE PRECISION` | `CHECK (VALUE >= 0)` | `outfreq`, `linefreq` | Pendiente de confirmación |
-| `dom_temperatura` | `DOUBLE PRECISION` | Sin límites en el dominio (los valores anómalos se tratan en `regla_calidad`) | `temper1`, `temper2` | Pendiente de confirmación |
-| `dom_porcentaje` | `SMALLINT` | `CHECK (VALUE BETWEEN 0 AND 100)` | `battsoc`, `fanduty` | Pendiente de confirmación |
-| `dom_porcentaje_carga` | `SMALLINT` | `CHECK (VALUE BETWEEN 0 AND 110)` | `loadpercenta`, `sumloadpercent` | Pendiente de confirmación |
-| `dom_resistencia_aislamiento` | `INTEGER` | `CHECK (VALUE >= 0)` | `sir` | Pendiente de confirmación |
-
-**Notas sobre las decisiones:**
-
-1. Los dominios con `>= 0` se basan en que ninguna de esas variables presenta valores negativos en el rango observado. La corriente de batería (`battcurr`, [-66,30; 54,00] A) y las potencias `battchgpower`, `linepowerw_a` y `gridpowerw_a` sí son negativas por definición (la documentación indica que `battcurr` es positiva al cargar y negativa al descargar), por eso usan dominios sin restricción de signo.
-2. `dom_porcentaje_carga` admite hasta 110 porque `loadpercenta` y `sumloadpercent` tienen rango observado [0, 110].
-3. **Condiciones que NO se implementan como CHECK:** la regla P > S (potencia activa mayor que la aparente, 3.811 filas) y el valor `temper1 = -20,3 °C` (38 filas) no pueden ser restricciones rígidas, porque PostgreSQL rechazaría la fila completa durante la migración. Se clasifican en `staging` antes del `INSERT` y se envían a `calidad.registro_cuarentena` (véase la sección 6).
-4. Los 342.592 registros con frecuencia 0 Hz corresponden a modo isla legítimo, por lo que `dom_frecuencia` **debe admitir 0**.
-
----
-
-## 3. Esquema `solardb` — Catálogos
-
-### 3.1 `solardb.dim_sitio`
-
-- **Propósito:** identifica el sitio físico donde opera la microrred (campus universitario en Shenzhen, China, CUHK-Shenzhen).
-- **Filas esperadas:** 1.
-
-| Nombre | Tipo | Dominio | Nulabilidad | Default | PK | FK | UNIQUE | CHECK | Descripción |
-|---|---|---|---|---|:-:|---|:-:|---|---|
-| `sitio_id` | `SMALLINT` (identidad) | — | NN | `GENERATED ALWAYS AS IDENTITY` | ✅ | — | — | — | Identificador subrogado del sitio. |
-| `nombre_sitio` | `VARCHAR(100)` | — | NN | — | — | — | ✅ | — | Nombre del sitio (CUHK-Shenzhen). |
-| `ciudad` | `VARCHAR(60)` | — | NN | — | — | — | — | — | Ciudad (Shenzhen). |
-| `pais` | `VARCHAR(60)` | — | NN | — | — | — | — | — | País (China). |
-| `zona_horaria` | `VARCHAR(40)` | — | NULL | — | — | — | — | — | Zona horaria IANA del sitio. **Pendiente de confirmación por el coordinador** (valor propuesto: `Asia/Shanghai`). |
-
-### 3.2 `solardb.dim_subsistema`
-
-- **Propósito:** representa cada uno de los 2 subsistemas independientes de la microrred híbrida (arreglo solar, banco de baterías, inversor y conexión a la red pública).
-- **Filas esperadas:** 2.
-
-| Nombre | Tipo | Dominio | Nulabilidad | Default | PK | FK | UNIQUE | CHECK | Descripción |
-|---|---|---|---|---|:-:|---|:-:|---|---|
-| `subsistema_id` | `SMALLINT` (identidad) | — | NN | `GENERATED ALWAYS AS IDENTITY` | ✅ | — | — | — | Identificador subrogado. |
-| `sitio_id` | `SMALLINT` | — | NN | — | — | → `dim_sitio.sitio_id` | — | — | Sitio al que pertenece. |
-| `nombre_subsistema` | `VARCHAR(100)` | — | NN | — | — | — | ✅ | — | Nombre descriptivo del subsistema. |
-| `carga_alimentada` | `VARCHAR(120)` | — | NN | — | — | — | — | — | Qué alimenta: estaciones de cómputo de investigación (GPU/CPU) o sistemas de climatización (HVAC). |
-| `num_paneles` | `SMALLINT` | — | NN | — | — | — | — | `CHECK (num_paneles > 0)` | Número de paneles solares (26 por subsistema). |
-| `potencia_panel_w` | `SMALLINT` | — | NN | — | — | — | — | `CHECK (potencia_panel_w > 0)` | Potencia de cada panel en W (480). |
-| `quimica_bateria` | `VARCHAR(30)` | — | NN | — | — | — | — | — | Química del banco de baterías (LiFePO4). |
-| `capacidad_bateria_ah` | `NUMERIC(6,1)` | — | NULL | — | — | — | — | `CHECK (capacidad_bateria_ah > 0)` | Capacidad aproximada del banco (~200 Ah). |
-| `voltaje_nominal_bateria_v` | `NUMERIC(4,1)` | — | NULL | — | — | — | — | `CHECK (voltaje_nominal_bateria_v > 0)` | Voltaje nominal del banco (51,2 V). |
-
-> `NUMERIC` se usa aquí porque son datos de especificación (valores nominales exactos que se capturan manualmente), no mediciones de sensor.
-
-### 3.3 `solardb.dim_inversor`
-
-- **Propósito:** identifica a cada inversor híbrido que genera las lecturas. Inversor 1 alimenta estaciones de cómputo; inversor 2 alimenta climatización (HVAC).
-- **Filas esperadas:** 2.
-
-| Nombre | Tipo | Dominio | Nulabilidad | Default | PK | FK | UNIQUE | CHECK | Descripción |
-|---|---|---|---|---|:-:|---|:-:|---|---|
-| `inversor_id` | `SMALLINT` | — | NN | — | ✅ | — | — | `CHECK (inversor_id IN (1, 2))` | Identificador del inversor. Se conserva el valor original de la columna `inverter` (rango observado [1, 2]). |
-| `subsistema_id` | `SMALLINT` | — | NN | — | — | → `dim_subsistema.subsistema_id` | ✅ | — | Subsistema al que pertenece (relación 1 a 1 propuesta, pendiente de confirmación). |
-| `frecuencia_nominal_hz` | `SMALLINT` | — | NN | `50` | — | — | — | `CHECK (frecuencia_nominal_hz > 0)` | Frecuencia nominal de la red (50 Hz). |
-| `tension_nominal_red_v` | `VARCHAR(10)` | — | NULL | — | — | — | — | — | Tensión nominal de la red pública (220 V / 230 V CA). |
-
-### 3.4 `solardb.cat_unidad_medida`
-
-- **Propósito:** catálogo de unidades de medida usadas por las variables físicas.
-- **Filas esperadas:** 9 (V, A, W, VA, Hz, °C, %, kΩ, s). **Pendiente de confirmación por el coordinador.**
-
-| Nombre | Tipo | Dominio | Nulabilidad | Default | PK | FK | UNIQUE | CHECK | Descripción |
-|---|---|---|---|---|:-:|---|:-:|---|---|
-| `unidad_id` | `SMALLINT` (identidad) | — | NN | `GENERATED ALWAYS AS IDENTITY` | ✅ | — | — | — | Identificador subrogado. |
-| `simbolo` | `VARCHAR(10)` | — | NN | — | — | — | ✅ | — | Símbolo (V, A, W, VA, Hz, °C, %, kΩ, s). |
-| `nombre` | `VARCHAR(40)` | — | NN | — | — | — | — | — | Nombre completo (voltio, amperio, vatio, voltamperio, hercio, grado Celsius, porcentaje, kiloohmio, segundo). |
-| `magnitud` | `VARCHAR(40)` | — | NN | — | — | — | — | — | Magnitud física que mide. |
-
-### 3.5 `solardb.cat_variable_fisica`
-
-- **Propósito:** catálogo de las 30 variables físicas de `analog_measurements`, con su unidad oficial y rango observado. Es el vínculo documental entre cada columna de `lectura_telemetria` y la fuente de los autores.
-- **Filas esperadas:** 30. **Pendiente de confirmación por el coordinador.**
-
-| Nombre | Tipo | Dominio | Nulabilidad | Default | PK | FK | UNIQUE | CHECK | Descripción |
-|---|---|---|---|---|:-:|---|:-:|---|---|
-| `variable_id` | `SMALLINT` (identidad) | — | NN | `GENERATED ALWAYS AS IDENTITY` | ✅ | — | — | — | Identificador subrogado. |
-| `nombre_columna` | `VARCHAR(30)` | — | NN | — | — | — | ✅ | — | Nombre de la variable en el dataset (ej. `battvolt`). |
-| `descripcion` | `TEXT` | — | NN | — | — | — | — | — | Descripción funcional de la variable. |
-| `unidad_id` | `SMALLINT` | — | NN | — | — | → `cat_unidad_medida.unidad_id` | — | — | Unidad de medida oficial. |
-| `rango_min_observado` | `DOUBLE PRECISION` | — | NULL | — | — | — | — | — | Mínimo observado en `analog_measurements`. |
-| `rango_max_observado` | `DOUBLE PRECISION` | — | NULL | — | — | — | — | `CHECK (rango_max_observado >= rango_min_observado)` | Máximo observado. |
-| `fuente_unidad` | `VARCHAR(120)` | — | NN | `'column_dictionary.json, campo unit'` | — | — | — | — | Evidencia documental de la unidad. |
-
----
-
-## 4. Esquema `solardb` — Tablas de hechos
-
-### 4.1 `solardb.lectura_telemetria`
-
-- **Propósito:** almacena cada lectura de telemetría analógica de un inversor. El muestreo se realiza aproximadamente cada 12,6 segundos mediante Modbus/RS485.
-- **Filas esperadas:** hasta 2.989.759 (cantidad de `analog_measurements`), menos las filas enviadas a cuarentena. **El total efectivo depende de la migración (pendiente).**
-- **Formato:** se propone **formato ancho** (una columna por variable física), igual al origen. La decisión ancho/largo está **pendiente de confirmación por el coordinador**.
-- **Evidencia de las unidades:** `column_dictionary.json`, campo `unit` del registro de cada variable.
-
-**Columnas de control**
-
-| Nombre | Tipo | Dominio | Nulabilidad | Default | PK | FK | UNIQUE | CHECK | Unidad | Descripción |
-|---|---|---|---|---|:-:|---|:-:|---|---|---|
-| `lectura_id` | `BIGINT` (identidad) | — | NN | `GENERATED ALWAYS AS IDENTITY` | ✅ | — | — | — | adimensional | Llave subrogada de la lectura. |
-| `inversor_id` | `SMALLINT` | — | NN | — | — | → `dim_inversor.inversor_id` | ✅ (con `ts_lectura`) | — | adimensional | Inversor que generó la lectura (origen: `inverter`, rango [1, 2]). |
-| `ts_lectura` | `TIMESTAMP WITH TIME ZONE` | — | NN | — | — | — | ✅ (con `inversor_id`) | — | s (Unix UTC) → fecha-hora | Instante de la lectura. Se obtiene de `read_ts` (timestamp Unix fraccionario, rango [1,75e9; 1,78e9]) con `to_timestamp(read_ts)`. |
-| `lote_id` | `INTEGER` | — | NN | — | — | → `calidad.lote_carga.lote_id` | — | — | — | Lote de carga que insertó la fila (trazabilidad). |
-
-> La restricción `UNIQUE (inversor_id, ts_lectura)` es la que haría idempotente la migración (si se ejecuta dos veces, no duplica filas). **Pendiente de confirmación:** el coordinador debe verificar que no existan duplicados en el origen.
-
-**Variables de batería**
-
-| Nombre | Tipo | Dominio | Nulabilidad | Unidad | Rango observado | Evidencia | Descripción |
-|---|---|---|---|---|---|---|---|
-| `battvolt` | `DOUBLE PRECISION` | `dom_voltaje` | NULL | V | [0,0; 57,60] | `column_dictionary.json`, `unit` de `battvolt` | Voltaje de la batería. |
-| `battcurr` | `DOUBLE PRECISION` | `dom_corriente` | NULL | A | [-66,30; 54,00] | `column_dictionary.json`, `unit` de `battcurr` | Corriente de batería (positiva: carga; negativa: descarga). |
-| `battsoc` | `SMALLINT` | `dom_porcentaje` | NULL | % | [6; 100] | `column_dictionary.json`, `unit` de `battsoc` | Estado de carga (SOC) de la batería. |
-| `battchgpower` | `INTEGER` | `dom_potencia_activa` | NULL | W | [-3400; 2800] | `column_dictionary.json`, `unit` de `battchgpower` | Potencia de carga/descarga de la batería. |
-| `linechgcurr` | `DOUBLE PRECISION` | `dom_corriente_no_neg` | NULL | A | [0,0; 50,0] | `column_dictionary.json`, `unit` de `linechgcurr` | Corriente de carga desde la red. |
-| `pvchgcurr` | `DOUBLE PRECISION` | `dom_corriente_no_neg` | NULL | A | [0,0; 60,0] | `column_dictionary.json`, `unit` de `pvchgcurr` | Corriente de carga desde la fuente solar. |
-
-**Variables fotovoltaicas**
-
-| Nombre | Tipo | Dominio | Nulabilidad | Unidad | Rango observado | Evidencia | Descripción |
-|---|---|---|---|---|---|---|---|
-| `pv1volt` | `DOUBLE PRECISION` | `dom_voltaje` | NULL | V | [0,0; 492,60] | `column_dictionary.json`, `unit` de `pv1volt` | Voltaje del arreglo fotovoltaico. |
-| `pv1curr` | `DOUBLE PRECISION` | `dom_corriente_no_neg` | NULL | A | [0,0; 10,60] | `column_dictionary.json`, `unit` de `pv1curr` | Corriente del arreglo fotovoltaico. |
-| `pv1power` | `INTEGER` | `dom_potencia_activa_no_neg` | NULL | W | [0; 3933] | `column_dictionary.json`, `unit` de `pv1power` | Potencia activa solar generada. |
-
-**Variables de salida (carga)**
-
-| Nombre | Tipo | Dominio | Nulabilidad | Unidad | Rango observado | Evidencia | Descripción |
-|---|---|---|---|---|---|---|---|
-| `outvolta` | `DOUBLE PRECISION` | `dom_voltaje` | NULL | V | [0,0; 245,80] | `column_dictionary.json`, `unit` de `outvolta` | Voltaje de salida CA a las cargas. |
-| `outcurra` | `DOUBLE PRECISION` | `dom_corriente_no_neg` | NULL | A | [0,0; 26,80] | `column_dictionary.json`, `unit` de `outcurra` | Corriente de salida a las cargas. |
-| `outfreq` | `DOUBLE PRECISION` | `dom_frecuencia` | NULL | Hz | [0,0; 50,10] | `column_dictionary.json`, `unit` de `outfreq` | Frecuencia de salida. |
-| `outw_a` | `INTEGER` | `dom_potencia_activa_no_neg` | NULL | W | [0; 5502] | `column_dictionary.json`, `unit` de `outw_a` | Potencia activa entregada a la carga. |
-| `outva_a` | `INTEGER` | `dom_potencia_aparente` | NULL | VA | [0; 5630] | `column_dictionary.json`, `unit` de `outva_a` | Potencia aparente a la carga. |
-| `outsumw` | `INTEGER` | `dom_potencia_activa_no_neg` | NULL | W | [0; 5502] | `column_dictionary.json`, `unit` de `outsumw` | Potencia activa total a la microrred. |
-| `outsumva` | `INTEGER` | `dom_potencia_aparente` | NULL | VA | [0; 5630] | `column_dictionary.json`, `unit` de `outsumva` | Potencia aparente total. |
-| `loadpercenta` | `SMALLINT` | `dom_porcentaje_carga` | NULL | % | [0; 110] | `column_dictionary.json`, `unit` de `loadpercenta` | Porcentaje de carga sobre la capacidad nominal. |
-| `sumloadpercent` | `SMALLINT` | `dom_porcentaje_carga` | NULL | % | [0; 110] | `column_dictionary.json`, `unit` de `sumloadpercent` | Porcentaje total de carga. |
-
-**Variables de la red eléctrica pública**
-
-| Nombre | Tipo | Dominio | Nulabilidad | Unidad | Rango observado | Evidencia | Descripción |
-|---|---|---|---|---|---|---|---|
-| `linevolta` | `DOUBLE PRECISION` | `dom_voltaje` | NULL | V | [0,0; 306,20] | `column_dictionary.json`, `unit` de `linevolta` | Voltaje de la red pública. |
-| `linecurra` | `DOUBLE PRECISION` | `dom_corriente_no_neg` | NULL | A | [0,0; 35,40] | `column_dictionary.json`, `unit` de `linecurra` | Corriente tomada de la red. |
-| `linefreq` | `DOUBLE PRECISION` | `dom_frecuencia` | NULL | Hz | [0,0; 50,07] | `column_dictionary.json`, `unit` de `linefreq` | Frecuencia de la red (nominal 50 Hz). |
-| `linepowerw_a` | `INTEGER` | `dom_potencia_activa` | NULL | W | [-5500; 5500] | `column_dictionary.json`, `unit` de `linepowerw_a` | Potencia activa con la red. |
-| `gridpowerw_a` | `INTEGER` | `dom_potencia_activa` | NULL | W | [-5500; 5500] | `column_dictionary.json`, `unit` de `gridpowerw_a` | Potencia neta de red en la acometida. |
-| `gridcurr_a` | `DOUBLE PRECISION` | `dom_corriente_no_neg` | NULL | A | [0,0; 35,40] | `column_dictionary.json`, `unit` de `gridcurr_a` | Corriente neta de red. |
-
-**Variables del bus DC, térmicas y auxiliares**
-
-| Nombre | Tipo | Dominio | Nulabilidad | Unidad | Rango observado | Evidencia | Descripción |
-|---|---|---|---|---|---|---|---|
-| `busvoltp` | `DOUBLE PRECISION` | `dom_voltaje` | NULL | V | [0,0; 480,00] | `column_dictionary.json`, `unit` de `busvoltp` | Voltaje del bus DC positivo. |
-| `busvoltn` | `DOUBLE PRECISION` | `dom_voltaje` | NULL | V | [0,0; 480,00] | `column_dictionary.json`, `unit` de `busvoltn` | Voltaje del bus DC negativo. |
-| `temper1` | `DOUBLE PRECISION` | `dom_temperatura` | NULL | °C | [-20,30; 49,30] | `column_dictionary.json`, `unit` de `temper1` | Temperatura del sensor 1. El valor -20,3 °C (38 filas) es un error de sensor y se trata por regla de calidad. |
-| `temper2` | `DOUBLE PRECISION` | `dom_temperatura` | NULL | °C | [0,0; 58,00] | `column_dictionary.json`, `unit` de `temper2` | Temperatura del sensor 2. |
-| `sir` | `INTEGER` | `dom_resistencia_aislamiento` | NULL | kΩ | [0; 9999] | `column_dictionary.json`, `unit` de `sir` | Resistencia de aislamiento del lado solar. |
-| `fanduty` | `SMALLINT` | `dom_porcentaje` | NULL | % | [0; 100] | `column_dictionary.json`, `unit` de `fanduty` | Ciclo de trabajo del ventilador. |
-
-**Nulabilidad de las variables:** todas las columnas de medición admiten `NULL`, porque aproximadamente el 2 % de las filas (≈58.000–60.000) tiene valores nulos por *timeouts* de Modbus. Declararlas `NOT NULL` provocaría el rechazo de datos que son legítimos como «medición no disponible».
-
-### 4.2 `solardb.registro_contexto`
-
-- **Propósito:** almacena las anotaciones de contexto (logs de estaciones de trabajo, eventos de Windows, historial de comandos, eventos climáticos derivados, calendario institucional y pruebas de carga).
-- **Filas esperadas:** hasta 25.178.
-- **Nota importante:** el contexto proporcionado no detalla las 5 columnas de la tabla `context` original, salvo el campo JSON `value` y su clave `$.source`. Las columnas siguientes son una **propuesta, pendiente de confirmación por el coordinador**.
-
-| Nombre | Tipo | Dominio | Nulabilidad | Default | PK | FK | UNIQUE | CHECK | Descripción |
-|---|---|---|---|---|:-:|---|:-:|---|---|
-| `contexto_id` | `BIGINT` (identidad) | — | NN | `GENERATED ALWAYS AS IDENTITY` | ✅ | — | — | — | Llave subrogada. |
-| `fuente_contexto` | `VARCHAR(40)` | — | NN | — | — | — | — | — | Fuente del registro, extraída de `value->>'source'`. Valores observados: `workstation2_log`, `windows_event_log`, `workstation1_log`, `derived_context_pipeline`, `wsl_bash_history`, `manual entry`, `manual_workload_entry`. |
-| `ts_contexto` | `TIMESTAMP WITH TIME ZONE` | — | NULL | — | — | — | — | — | Instante del evento. Columna temporal original **pendiente de confirmación**. |
-| `valor` | `JSONB` | — | NN | — | — | — | — | `CHECK (jsonb_typeof(valor) = 'object')` | Contenido original del registro (campo `value`). |
-| `contiene_datos_personales` | `BOOLEAN` | — | NN | `FALSE` | — | — | — | — | Marca los registros con posibles datos personales (principalmente `wsl_bash_history`, 204 filas). Soporta el análisis de la Ley 1581 de 2012. |
-| `lote_id` | `INTEGER` | — | NN | — | — | → `calidad.lote_carga.lote_id` | — | — | Lote de carga (trazabilidad). |
-
-**Distribución por fuente (datos reales):**
-
-| Fuente (`$.source`) | Cantidad |
+| Indicador | Valor |
 |---|---:|
-| `workstation2_log` | 8.902 |
-| `windows_event_log` | 6.271 |
-| `workstation1_log` | 6.028 |
-| `derived_context_pipeline` | 3.708 |
-| `wsl_bash_history` | 204 |
-| `manual entry` | 60 |
-| `manual_workload_entry` | 5 |
-| **Total** | **25.178** |
+| Filas leídas de telemetría (SQLite, `analog_measurements`) | **2.989.759** |
+| Filas aceptadas en `solardb.lectura_telemetria` | **2.965.337** (99,18 %) |
+| Filas aisladas en `calidad.registro_cuarentena` | **24.422** (0,82 %) |
+| Filas de contexto en `solardb.registro_contexto` | **25.178** (100 %) |
+| Cuadratura | 2.965.337 + 24.422 = 2.989.759 (exacta) |
+| Meta del profesor (≥ 1.000.000 lecturas) | Superada (298,9 %) |
 
----
+### 2.2 Cuarentena por regla de calidad
 
-## 5. Esquema `staging`
-
-### 5.1 `staging.staging_telemetria`
-
-- **Propósito:** zona de aterrizaje de los datos crudos del SQLite. **No tiene dominios ni CHECK**, de modo que cualquier fila pueda entrar. Allí se clasifica cada fila (válida o inválida) *antes* de insertar en `solardb`; esa clasificación es la que decide el envío a cuarentena. PostgreSQL no envía filas rechazadas a cuarentena de forma automática.
-- **Filas esperadas:** transitoria (hasta 2.989.759 durante la carga; puede vaciarse después).
-
-| Nombre | Tipo | Nulabilidad | Descripción |
-|---|---|---|---|
-| `stg_id` | `BIGINT` (identidad), PK | NN | Llave subrogada temporal. |
-| `lote_id` | `INTEGER`, FK → `calidad.lote_carga.lote_id` | NN | Lote al que pertenece. |
-| `read_ts` | `DOUBLE PRECISION` | NULL | Timestamp Unix fraccionario original (s). |
-| `inverter` | `SMALLINT` | NULL | ID original del inversor. |
-| Las 30 variables físicas (`battvolt` … `fanduty`) | `DOUBLE PRECISION` | NULL | Mismos nombres que en `lectura_telemetria`, sin dominio, para conservar el valor original. |
-| `estado_validacion` | `VARCHAR(12)`, `DEFAULT 'PENDIENTE'`, `CHECK (estado_validacion IN ('PENDIENTE','VALIDA','RECHAZADA'))` | NN | Resultado de la clasificación. |
-
----
-
-## 6. Esquema `calidad`
-
-### 6.1 `calidad.lote_carga`
-
-- **Propósito:** registra cada ejecución de carga, para auditar cuántas filas se leyeron, aceptaron y rechazaron.
-- **Filas esperadas:** una por cada ejecución de migración. **Estructura propuesta, pendiente de confirmación por el coordinador.**
-
-| Nombre | Tipo | Nulabilidad | Default | PK | FK | UNIQUE | CHECK | Descripción |
-|---|---|---|---|:-:|---|:-:|---|---|
-| `lote_id` | `INTEGER` (identidad) | NN | `GENERATED ALWAYS AS IDENTITY` | ✅ | — | — | — | Identificador del lote. |
-| `tabla_origen` | `VARCHAR(40)` | NN | — | — | — | — | — | Tabla del SQLite de la que proviene (ej. `analog_measurements`, `context`). |
-| `fecha_inicio` | `TIMESTAMP WITH TIME ZONE` | NN | `now()` | — | — | — | — | Inicio de la carga. |
-| `fecha_fin` | `TIMESTAMP WITH TIME ZONE` | NULL | — | — | — | — | `CHECK (fecha_fin >= fecha_inicio)` | Fin de la carga. |
-| `filas_leidas` | `BIGINT` | NN | `0` | — | — | — | `CHECK (filas_leidas >= 0)` | Filas leídas del origen. |
-| `filas_aceptadas` | `BIGINT` | NN | `0` | — | — | — | `CHECK (filas_aceptadas >= 0)` | Filas insertadas en `solardb`. |
-| `filas_rechazadas` | `BIGINT` | NN | `0` | — | — | — | `CHECK (filas_rechazadas >= 0)` | Filas enviadas a cuarentena. |
-| `estado` | `VARCHAR(12)` | NN | `'EN_CURSO'` | — | — | — | `CHECK (estado IN ('EN_CURSO','COMPLETADO','FALLIDO'))` | Estado del lote. |
-
-### 6.2 `calidad.regla_calidad`
-
-- **Propósito:** catálogo de reglas de validación aplicadas en staging (nulos, rangos, P > S, sensor imposible).
-- **Filas esperadas:** por definir. **Pendiente de confirmación por el coordinador.**
-
-| Nombre | Tipo | Nulabilidad | PK | FK | UNIQUE | CHECK | Descripción |
-|---|---|---|:-:|---|:-:|---|---|
-| `regla_id` | `SMALLINT` (identidad) | NN | ✅ | — | — | — | Identificador de la regla. |
-| `codigo_regla` | `VARCHAR(30)` | NN | — | — | ✅ | — | Código corto (ej. `R_P_MAYOR_S`). |
-| `descripcion` | `TEXT` | NN | — | — | — | — | Qué valida la regla. |
-| `variable_id` | `SMALLINT` | NULL | — | → `solardb.cat_variable_fisica.variable_id` | — | — | Variable afectada (NULL si involucra varias). |
-| `severidad` | `VARCHAR(10)` | NN | — | — | — | `CHECK (severidad IN ('INFO','ADVERTENCIA','ERROR'))` | Gravedad. |
-| `accion` | `VARCHAR(12)` | NN | — | — | — | `CHECK (accion IN ('CUARENTENA','ANULAR','ACEPTAR'))` | Acción al incumplirse. |
-| `activa` | `BOOLEAN` | NN | — | — | — | — | Si la regla está vigente (`DEFAULT TRUE`). |
-
-**Casos reales que justifican reglas (diagnóstico del coordinador):**
-
-| Caso | Filas | Tratamiento propuesto |
+| Código de regla | Filas | Motivo técnico (según el coordinador) |
 |---|---:|---|
-| Valores nulos por timeouts Modbus | ≈58.000–60.000 (~2 %) | Aceptar con `NULL` (dato faltante legítimo). |
-| `temper1 = -20,3 °C` (error de sensor) | 38 | Cuarentena. |
-| Potencia activa P mayor que aparente S (violación en CA) | 3.811 | Cuarentena. |
-| Frecuencia = 0 Hz (modo isla) | 342.592 | Aceptar (condición legítima). |
+| `R_P_MAYOR_S` | **24.375** | Potencia activa mayor que la aparente. Viola P ≤ S en corriente alterna; atribuida a desfase temporal en el muestreo Modbus. |
+| `R_TEMP1_IMPOSIBLE` | **38** | `temper1 = -20,3 °C`; valor considerado imposible para el sitio; falla de sensor o circuito abierto. |
+| `R_LINEPOWERVA_NEG` | **8** | Potencia aparente negativa (S < 0); la potencia aparente es una magnitud no negativa por definición. |
+| `R_LINECURRA_NEG` | **1** | Corriente de red negativa; lectura espuria aislada de un sensor monofásico unidireccional. |
+| **Total** | **24.422** | Almacenadas en `calidad.registro_cuarentena` como `JSONB` con estado `PENDIENTE`. |
 
-### 6.3 `calidad.registro_cuarentena`
+### 2.3 Distribución por inversor en producción
 
-- **Propósito:** conserva las filas rechazadas por una regla, con su valor original, para revisarlas o reprocesarlas sin perder información.
-- **Filas esperadas:** al menos 3.849 si se aplican las reglas de la tabla anterior (38 + 3.811), sin contar las demás reglas que se definan. **Pendiente de confirmación.**
+| Inversor | Carga que alimenta | Filas aceptadas | % | Rango temporal |
+|---|---|---:|---:|---|
+| 1 | Cómputo (GPU/CPU) | **1.594.461** | 53,77 % | 2025-07-12 13:31:35 → 2026-07-13 05:13:53 (~1 año) |
+| 2 | Climatización (HVAC) | **1.370.876** | 46,23 % | 2025-07-14 05:53:32 → 2026-06-22 05:35:24 (~11 meses) |
+| **Total** | | **2.965.337** | 100 % | Cadencia mediana: 12,58 s |
 
-| Nombre | Tipo | Nulabilidad | Default | PK | FK | CHECK | Descripción |
-|---|---|---|---|:-:|---|---|---|
-| `cuarentena_id` | `BIGINT` (identidad) | NN | `GENERATED ALWAYS AS IDENTITY` | ✅ | — | — | Identificador. |
-| `lote_id` | `INTEGER` | NN | — | — | → `lote_carga.lote_id` | — | Lote en que ocurrió. |
-| `regla_id` | `SMALLINT` | NN | — | — | → `regla_calidad.regla_id` | — | Regla incumplida. |
-| `read_ts_original` | `DOUBLE PRECISION` | NULL | — | — | — | — | Timestamp Unix original (s). |
-| `inversor_original` | `SMALLINT` | NULL | — | — | — | — | Inversor original. |
-| `fila_original` | `JSONB` | NN | — | — | — | — | Copia completa de la fila rechazada. |
-| `estado` | `VARCHAR(12)` | NN | `'PENDIENTE'` | — | — | `CHECK (estado IN ('PENDIENTE','CORREGIDO','DESCARTADO','REPROCESADO'))` | Estado de revisión. Se consulta con frecuencia (véase `09_diseno_fisico.md`). |
-| `fecha_registro` | `TIMESTAMP WITH TIME ZONE` | NN | `now()` | — | — | — | Cuándo se envió a cuarentena. |
-| `fecha_resolucion` | `TIMESTAMP WITH TIME ZONE` | NULL | — | — | — | `CHECK (fecha_resolucion >= fecha_registro)` | Cuándo se resolvió. |
+### 2.4 Lotes de carga auditados
+
+| `lote_id` | `tabla_origen` | Estado | Filas leídas | Filas aceptadas | Filas rechazadas |
+|---:|---|---|---:|---:|---:|
+| 4 | `analog_measurements` | COMPLETADO | 2.989.759 | 2.965.337 | 24.422 |
+| 6 | `context` | COMPLETADO | 25.178 | 25.178 | 0 |
 
 ---
 
-## 7. Justificación técnica de los tipos de datos
+## 3. Dominios personalizados (`CREATE DOMAIN`, esquema `solardb`)
 
-### 7.1 `NUMERIC` frente a `DOUBLE PRECISION`
+Un dominio es un tipo de dato propio, basado en un tipo existente, con restricciones incluidas. Define una sola vez la regla de una magnitud física y la reutiliza en muchas columnas.
+
+| Dominio | Tipo base | Restricción `CHECK` | Columnas que lo usan |
+|---|---|---|---|
+| `dom_voltaje` | `DOUBLE PRECISION` | `VALUE >= 0` | `battvolt`, `pv1volt`, `outvolta`, `linevolta`, `busvoltp`, `busvoltn` |
+| `dom_corriente` | `DOUBLE PRECISION` | Sin CHECK (con signo) | `battcurr` |
+| `dom_corriente_no_neg` | `DOUBLE PRECISION` | `VALUE >= 0` | `linechgcurr`, `pvchgcurr`, `pv1curr`, `outcurra`, `invcurra`†, `linecurra`, `gridcurr_a` |
+| `dom_potencia_activa` | `INTEGER` | Sin CHECK (con signo) | `battchgpower`, `linepowerw_a`, `gridpowerw_a`, `generatedpowerp_a`† |
+| `dom_potencia_activa_no_neg` | `INTEGER` | `VALUE >= 0` | `pv1power`, `outw_a`, `normalloadw_a`†, `outsumw` |
+| `dom_potencia_aparente` | `INTEGER` | `VALUE >= 0` | `outva_a`, `outsumva`, `linepowerva_a`†, `generatedpowers_a`† |
+| `dom_potencia_reactiva` | `INTEGER` | Sin CHECK (con signo) | `generatedpowerq_a`† |
+| `dom_frecuencia` | `DOUBLE PRECISION` | `VALUE >= 0` | `outfreq`, `linefreq` |
+| `dom_temperatura` | `DOUBLE PRECISION` | Sin CHECK (las anomalías van a cuarentena) | `temper1`, `temper2`, `temper3`†, `temper4`† |
+| `dom_porcentaje` | `SMALLINT` | `VALUE BETWEEN 0 AND 100` | `battsoc`, `fanduty` |
+| `dom_porcentaje_carga` | `SMALLINT` | `VALUE BETWEEN 0 AND 110` | `loadpercenta`, `sumloadpercent` |
+| `dom_resistencia_aislamiento` | `INTEGER` | `VALUE >= 0` | `sir` |
+
+**Decisiones de diseño explicadas:**
+
+1. **Dominios con signo:** la corriente de batería (positiva al cargar, negativa al descargar), las potencias de batería y de red (flujo en ambos sentidos) y la potencia reactiva pueden ser negativas, por lo que sus dominios no restringen el signo.
+2. **`dom_temperatura` sin CHECK:** el valor anómalo `temper1 = -20,3 °C` (38 filas) no se impide con una restricción, porque el motor rechazaría la fila completa durante la migración. Se detecta con la regla `R_TEMP1_IMPOSIBLE` y la fila se conserva en cuarentena con su valor original.
+3. **`dom_frecuencia` admite 0:** las lecturas de frecuencia 0 Hz corresponden a modo isla legítimo y no deben rechazarse.
+4. **Reglas entre columnas fuera del dominio:** un dominio solo ve su propio valor; por eso la relación P ≤ S entre dos columnas no puede ser un dominio y se controla con `R_P_MAYOR_S` en el proceso de staging.
+5. **Dominios y cuarentena trabajan juntos:** los dominios son la **última barrera** (una inserción directa inválida falla con un error `check_violation`); la cuarentena es el **filtro previo** del proceso de carga. Por ejemplo, `linepowerva_a` pertenece a `dom_potencia_aparente` (`>= 0`): las 8 filas con S negativa se desviaron a cuarentena **antes** de que el dominio las rechazara.
+
+---
+
+## 4. Esquema `solardb` — Catálogos
+
+### 4.1 `solardb.dim_sitio` (1 fila)
+
+Sitio físico donde opera la microrred: campus universitario de CUHK-Shenzhen, en Shenzhen, China.
+
+| Columna | Tipo | NN | PK / FK / UNIQUE | Descripción |
+|---|---|:-:|---|---|
+| `sitio_id` | `SMALLINT` (identidad) | ✅ | PK | Identificador del sitio. |
+| `nombre_sitio` | `VARCHAR` | ✅ | UNIQUE | Nombre del sitio (CUHK-Shenzhen). |
+| Otras columnas descriptivas (ciudad, país, zona horaria) | — | — | — | Definidas en el DDL del coordinador; **verificar nombres y tipos contra el DDL**. |
+
+### 4.2 `solardb.dim_subsistema` (2 filas: Cómputo y HVAC)
+
+Cada uno de los dos subsistemas independientes de la microrred: 26 paneles de 480 W, banco de baterías LiFePO4 (~200 Ah, 51,2 V nominales), inversor híbrido y conexión a la red.
+
+| Columna | Tipo | NN | PK / FK / UNIQUE | Descripción |
+|---|---|:-:|---|---|
+| `subsistema_id` | `SMALLINT` (identidad) | ✅ | PK | Identificador del subsistema. |
+| `sitio_id` | `SMALLINT` | ✅ | FK → `dim_sitio.sitio_id` | Sitio al que pertenece. |
+| Nombre, carga alimentada y especificaciones (paneles, potencia por panel, batería) | — | — | — | Definidas en el DDL; **verificar contra el DDL**. Los valores nominales exactos se almacenan como `NUMERIC` (sección 9.1). |
+
+### 4.3 `solardb.dim_inversor` (2 filas: Inv1 e Inv2)
+
+| Columna | Tipo | NN | PK / FK / UNIQUE | CHECK | Descripción |
+|---|---|:-:|---|---|---|
+| `inversor_id` | `SMALLINT` | ✅ | PK | valores 1 y 2 | Identificador original del inversor (columna `inverter`, rango observado [1, 2]). Inversor 1: cómputo (GPU/CPU). Inversor 2: climatización (HVAC). |
+| `subsistema_id` | `SMALLINT` | ✅ | FK → `dim_subsistema.subsistema_id` | — | Subsistema al que pertenece. |
+| Otras columnas descriptivas | — | — | — | — | **Verificar contra el DDL.** |
+
+### 4.4 `solardb.cat_unidad_medida`
+
+Catálogo de unidades: V, A, W, VA, Hz, °C, %, kΩ (y la unidad de potencia reactiva si el DDL la incluye).
+
+| Columna | Tipo | NN | PK / FK / UNIQUE | Descripción |
+|---|---|:-:|---|---|
+| `unidad_id` | `SMALLINT` (identidad) | ✅ | PK | Identificador. |
+| `simbolo` | `VARCHAR` | ✅ | UNIQUE | Símbolo de la unidad. |
+| Nombre y magnitud | — | — | — | **Verificar contra el DDL.** |
+
+### 4.5 `solardb.cat_variable_fisica` (38 o más filas)
+
+Catálogo de las variables de telemetría, con su unidad oficial.
+
+| Columna | Tipo | NN | PK / FK / UNIQUE | Descripción |
+|---|---|:-:|---|---|
+| `variable_id` | `SMALLINT` (identidad) | ✅ | PK | Identificador. |
+| `nombre_columna` | `VARCHAR` | ✅ | UNIQUE | Nombre de la variable (ej. `battvolt`). |
+| `unidad_id` | `SMALLINT` | ✅ | FK → `cat_unidad_medida.unidad_id` | Unidad de medida. |
+| Descripción y rangos | — | — | — | **Verificar contra el DDL.** |
+
+### 4.6 `solardb.cat_tipo_contexto` (7 filas)
+
+Tipos de contexto, que corresponden a las 7 fuentes del campo `source` del JSON: `workstation1_log`, `workstation2_log`, `windows_event_log`, `derived_context_pipeline`, `wsl_bash_history`, `manual entry` y `manual_workload_entry`.
+
+| Columna | Tipo | NN | PK / FK / UNIQUE | Descripción |
+|---|---|:-:|---|---|
+| `tipo_contexto_id` | `SMALLINT` (identidad) | ✅ | PK | Identificador. |
+| Nombre de la fuente y descripción | — | — | — | **Verificar contra el DDL.** |
+
+---
+
+## 5. Esquema `solardb` — `lectura_telemetria`
+
+- **Propósito:** una fila por lectura de un inversor en un instante (muestreo cada ~12,6 s por Modbus/RS485; cadencia mediana 12,58 s).
+- **Filas reales:** **2.965.337**. **Tamaño real:** 3.824 MB (datos 3.440 MB; índices 384 MB).
+- **Formato:** ancho (una columna por variable). **Columnas: 46** = 4 de control + 38 de medición + 4 `JSONB` reservadas.
+- **Clave primaria:** `lectura_id` (`BIGINT GENERATED ALWAYS AS IDENTITY`).
+- **Clave única natural:** `(inversor_id, ts_lectura)`.
+- **Claves foráneas:** `inversor_id → dim_inversor(inversor_id)`; `lote_id → calidad.lote_carga(lote_id)`.
+- **Evidencia de las unidades:** `column_dictionary.json`, campo `unit` del registro de cada variable. Marca **†**: unidad deducida del dominio, pendiente de verificar.
+
+### 5.1 Columnas de control (4)
+
+| # | Columna | Tipo | Dominio | NN | PK / FK / UNIQUE | Unidad | Descripción |
+|---:|---|---|---|:-:|---|---|---|
+| 1 | `lectura_id` | `BIGINT` (`GENERATED ALWAYS AS IDENTITY`) | — | ✅ | PK | adimensional | Llave subrogada de la lectura. |
+| 2 | `inversor_id` | `SMALLINT` | — | ✅ | FK → `dim_inversor.inversor_id`; UNIQUE con `ts_lectura` | adimensional | Inversor que generó la lectura (origen: `inverter`). |
+| 3 | `ts_lectura` | `TIMESTAMP WITH TIME ZONE` | — | ✅ | UNIQUE con `inversor_id` | s (Unix UTC) → fecha-hora | Instante de la lectura. Se obtiene de `read_ts` (Unix fraccionario, rango [1,75 × 10⁹; 1,78 × 10⁹]) con `to_timestamp(read_ts)`. |
+| 4 | `lote_id` | `INTEGER` | — | ✅ | FK → `calidad.lote_carga.lote_id` | — | Lote de carga que insertó la fila (trazabilidad). |
+
+### 5.2 Variables de batería (6)
+
+| # | Columna | Tipo base | Dominio | Unidad | Rango observado | Descripción |
+|---:|---|---|---|---|---|---|
+| 5 | `battvolt` | `DOUBLE PRECISION` | `dom_voltaje` | V | [0,0; 57,60] | Voltaje de la batería. |
+| 6 | `battcurr` | `DOUBLE PRECISION` | `dom_corriente` | A | [-66,30; 54,00] | Corriente de batería (positiva: carga; negativa: descarga). |
+| 7 | `battsoc` | `SMALLINT` | `dom_porcentaje` | % | [6; 100] | Estado de carga (SOC). |
+| 8 | `battchgpower` | `INTEGER` | `dom_potencia_activa` | W | [-3400; 2800] | Potencia de carga/descarga de la batería. |
+| 9 | `linechgcurr` | `DOUBLE PRECISION` | `dom_corriente_no_neg` | A | [0,0; 50,0] | Corriente de carga desde la red. |
+| 10 | `pvchgcurr` | `DOUBLE PRECISION` | `dom_corriente_no_neg` | A | [0,0; 60,0] | Corriente de carga desde la fuente solar. |
+
+### 5.3 Variables fotovoltaicas (3)
+
+| # | Columna | Tipo base | Dominio | Unidad | Rango observado | Descripción |
+|---:|---|---|---|---|---|---|
+| 11 | `pv1volt` | `DOUBLE PRECISION` | `dom_voltaje` | V | [0,0; 492,60] | Voltaje del arreglo fotovoltaico. |
+| 12 | `pv1curr` | `DOUBLE PRECISION` | `dom_corriente_no_neg` | A | [0,0; 10,60] | Corriente del arreglo fotovoltaico. |
+| 13 | `pv1power` | `INTEGER` | `dom_potencia_activa_no_neg` | W | [0; 3933] | Potencia activa solar generada. |
+
+### 5.4 Variables de salida a las cargas (11)
+
+| # | Columna | Tipo base | Dominio | Unidad | Rango observado | Descripción |
+|---:|---|---|---|---|---|---|
+| 14 | `outvolta` | `DOUBLE PRECISION` | `dom_voltaje` | V | [0,0; 245,80] | Voltaje de salida CA a las cargas. |
+| 15 | `outcurra` | `DOUBLE PRECISION` | `dom_corriente_no_neg` | A | [0,0; 26,80] | Corriente de salida a las cargas. |
+| 16 | `outfreq` | `DOUBLE PRECISION` | `dom_frecuencia` | Hz | [0,0; 50,10] | Frecuencia de salida. |
+| 17 | `outw_a` | `INTEGER` | `dom_potencia_activa_no_neg` | W | [0; 5502] | Potencia activa entregada a la carga. |
+| 18 | `outva_a` | `INTEGER` | `dom_potencia_aparente` | VA | [0; 5630] | Potencia aparente a la carga. |
+| 19 | `outsumw` | `INTEGER` | `dom_potencia_activa_no_neg` | W | [0; 5502] | Potencia activa total a la microrred. |
+| 20 | `outsumva` | `INTEGER` | `dom_potencia_aparente` | VA | [0; 5630] | Potencia aparente total. |
+| 21 | `loadpercenta` | `SMALLINT` | `dom_porcentaje_carga` | % | [0; 110] | Porcentaje de carga sobre la capacidad nominal. |
+| 22 | `sumloadpercent` | `SMALLINT` | `dom_porcentaje_carga` | % | [0; 110] | Porcentaje total de carga. |
+| 23 | `invcurra`† | `DOUBLE PRECISION` | `dom_corriente_no_neg` | A† | sin dato | Corriente asociada al inversor (nombre de la variable en el dataset; descripción por verificar). |
+| 24 | `normalloadw_a`† | `INTEGER` | `dom_potencia_activa_no_neg` | W† | sin dato | Potencia activa de carga normal (descripción por verificar). |
+
+### 5.5 Variables de la red eléctrica pública (10)
+
+| # | Columna | Tipo base | Dominio | Unidad | Rango observado | Descripción |
+|---:|---|---|---|---|---|---|
+| 25 | `linevolta` | `DOUBLE PRECISION` | `dom_voltaje` | V | [0,0; 306,20] | Voltaje de la red pública. |
+| 26 | `linecurra` | `DOUBLE PRECISION` | `dom_corriente_no_neg` | A | [0,0; 35,40] | Corriente tomada de la red. Valor negativo → regla `R_LINECURRA_NEG` (1 fila). |
+| 27 | `linefreq` | `DOUBLE PRECISION` | `dom_frecuencia` | Hz | [0,0; 50,07] | Frecuencia de la red (nominal 50 Hz). |
+| 28 | `linepowerw_a` | `INTEGER` | `dom_potencia_activa` | W | [-5500; 5500] | Potencia activa con la red. |
+| 29 | `gridpowerw_a` | `INTEGER` | `dom_potencia_activa` | W | [-5500; 5500] | Potencia neta de red en la acometida. |
+| 30 | `gridcurr_a` | `DOUBLE PRECISION` | `dom_corriente_no_neg` | A | [0,0; 35,40] | Corriente neta de red. |
+| 31 | `linepowerva_a`† | `INTEGER` | `dom_potencia_aparente` | VA† | sin dato | Potencia aparente de red. Valor negativo → regla `R_LINEPOWERVA_NEG` (8 filas). |
+| 32 | `generatedpowerp_a`† | `INTEGER` | `dom_potencia_activa` | W† | sin dato | Potencia activa «generada» (descripción por verificar). |
+| 33 | `generatedpowers_a`† | `INTEGER` | `dom_potencia_aparente` | VA† | sin dato | Potencia aparente «generada» (descripción por verificar). |
+| 34 | `generatedpowerq_a`† | `INTEGER` | `dom_potencia_reactiva` | VAr† | sin dato | Potencia reactiva «generada» (descripción por verificar). |
+
+### 5.6 Bus DC, temperaturas y auxiliares (8)
+
+| # | Columna | Tipo base | Dominio | Unidad | Rango observado | Descripción |
+|---:|---|---|---|---|---|---|
+| 35 | `busvoltp` | `DOUBLE PRECISION` | `dom_voltaje` | V | [0,0; 480,00] | Voltaje del bus DC positivo. |
+| 36 | `busvoltn` | `DOUBLE PRECISION` | `dom_voltaje` | V | [0,0; 480,00] | Voltaje del bus DC negativo. |
+| 37 | `temper1` | `DOUBLE PRECISION` | `dom_temperatura` | °C | [-20,30; 49,30] | Temperatura del sensor 1. El valor -20,3 °C (38 filas) activa `R_TEMP1_IMPOSIBLE`. |
+| 38 | `temper2` | `DOUBLE PRECISION` | `dom_temperatura` | °C | [0,0; 58,00] | Temperatura del sensor 2. |
+| 39 | `temper3`† | `DOUBLE PRECISION` | `dom_temperatura` | °C† | sin dato | Temperatura del sensor 3. |
+| 40 | `temper4`† | `DOUBLE PRECISION` | `dom_temperatura` | °C† | sin dato | Temperatura del sensor 4. |
+| 41 | `sir` | `INTEGER` | `dom_resistencia_aislamiento` | kΩ | [0; 9999] | Resistencia de aislamiento del lado solar. |
+| 42 | `fanduty` | `SMALLINT` | `dom_porcentaje` | % | [0; 100] | Ciclo de trabajo del ventilador. |
+
+### 5.7 Columnas `JSONB` reservadas (4)
+
+| # | Columna | Tipo | NN | Descripción |
+|---:|---|---|:-:|---|
+| 43 | `battreserve` | `JSONB` | NULL | Campo reservado asociado a la batería. |
+| 44 | `pvreserve` | `JSONB` | NULL | Campo reservado asociado al arreglo fotovoltaico. |
+| 45 | `otherreserve` | `JSONB` | NULL | Otros campos reservados. |
+| 46 | `grid_reserve` | `JSONB` | NULL | Campo reservado asociado a la red. |
+
+> **Pendiente:** el material disponible no detalla el contenido de las columnas `*_reserve`. Antes de la sustentación hay que confirmar con el coordinador qué guardan (por ejemplo, con `SELECT count(*) FILTER (WHERE battreserve IS NOT NULL) ...`). Su efecto en el tamaño de la tabla se discute en `09_diseno_fisico.md`.
+
+**Verificación de la cuenta de 46 columnas:** 4 (control) + 6 + 3 + 11 + 10 + 8 (= 38 de medición) + 4 (reservadas) = 46.
+
+**Nulabilidad:** todas las columnas de medición admiten `NULL`, porque ~2 % de las lecturas originales tiene valores nulos por *timeouts* de Modbus (regla `R_NULOS_MODBUS`, que **acepta** la fila con el nulo y no la envía a cuarentena).
+
+---
+
+## 6. Esquema `solardb` — `registro_contexto`
+
+- **Propósito:** anotaciones de contexto (logs de estaciones, eventos de Windows, historial de comandos, eventos climáticos derivados, calendario institucional y pruebas de carga).
+- **Filas reales:** **25.178** (100 % de `context`), lote 6. **Tamaño real:** 26 MB (datos 17 MB; índices 9,3 MB). **Columnas: 6.**
+
+| Columna | Tipo | NN | Default | PK / FK | CHECK | Descripción |
+|---|---|:-:|---|---|---|---|
+| `contexto_id` | `BIGINT` (`GENERATED ALWAYS AS IDENTITY`) | ✅ | — | PK | — | Llave subrogada. |
+| `tipo_contexto_id` | `SMALLINT` | ✅ | — | FK → `cat_tipo_contexto` | — | Fuente del registro (reemplaza la columna `fuente_contexto` de la primera versión). |
+| `valor` | `JSONB` | ✅ | — | — | `jsonb_typeof(valor) = 'object'` | Contenido original del registro (campo `value`). |
+| `contiene_datos_personales` | `BOOLEAN` | ✅ | `FALSE` | — | — | Marca para la Ley 1581 de 2012: indica los registros que pueden contener datos personales. |
+| `lote_id` | `INTEGER` | ✅ | — | FK → `calidad.lote_carga` | — | Lote de carga (trazabilidad). |
+| (sexta columna) | — | — | — | — | — | **Pendiente de confirmación:** el material disponible no la nombra; podría ser la marca de tiempo del evento. **Verificar contra el DDL.** |
+
+**Distribución por fuente (campo `source` dentro de `valor`):**
+
+| Fuente | Registros | Contenido | ¿Datos personales? |
+|---|---:|---|---|
+| `workstation2_log` | 8.902 | Logs GPU/CPU de la estación 2 | Posible (nombres de tareas) |
+| `windows_event_log` | 6.271 | Eventos de Windows | Sí (nombres de usuario) |
+| `workstation1_log` | 6.028 | Logs de tareas de la estación 1 | Posible |
+| `derived_context_pipeline` | 3.708 | Eventos climáticos y solares derivados | No |
+| `wsl_bash_history` | **204** | Comandos de terminal Linux | **Sí (usuarios, rutas e IP)** |
+| `manual entry` | 60 | Calendario institucional | No |
+| `manual_workload_entry` | 5 | Pruebas de carga | No |
+| **Total** | **25.178** | | |
+
+---
+
+## 7. Esquema `calidad` y esquema `staging`
+
+### 7.1 `calidad.lote_carga` (2 lotes completados)
+
+Auditoría de cada ejecución de carga.
+
+| Columna (según los resultados certificados) | Tipo | Descripción |
+|---|---|---|
+| `lote_id` | `INTEGER` (identidad), PK | Identificador del lote (valores reales: 4 y 6). |
+| `tabla_origen` | `VARCHAR` | Tabla del SQLite de origen (`analog_measurements`, `context`). |
+| `estado` | `VARCHAR` | Estado del lote (`COMPLETADO`). |
+| `filas_leidas` | `BIGINT` | Filas leídas del origen. |
+| `filas_aceptadas` | `BIGINT` | Filas insertadas en producción. |
+| `filas_rechazadas` | `BIGINT` | Filas enviadas a cuarentena. |
+
+> Otras columnas (fechas de inicio y fin, por ejemplo) pueden existir en el DDL; **verificar contra el DDL**.
+
+### 7.2 `calidad.regla_calidad` (6 reglas activas)
+
+| Código | Qué valida | Acción | Filas en cuarentena |
+|---|---|---|---:|
+| `R_P_MAYOR_S` | Potencia activa mayor que la aparente | Cuarentena | 24.375 |
+| `R_TEMP1_IMPOSIBLE` | `temper1 = -20,3 °C` | Cuarentena | 38 |
+| `R_LINEPOWERVA_NEG` | Potencia aparente negativa | Cuarentena | 8 |
+| `R_LINECURRA_NEG` | Corriente de red negativa | Cuarentena | 1 |
+| `R_NULOS_MODBUS` | Nulos por *timeouts* de Modbus | Aceptar la fila con el nulo | 0 |
+| `R_FREQ_CERO` | Frecuencia = 0 Hz | Aceptar (modo isla legítimo) | 0 |
+
+> Las acciones de las dos últimas reglas se deducen del desglose certificado (no generan filas en cuarentena). **Verificar contra el DDL.**
+
+### 7.3 `calidad.registro_cuarentena` (24.422 filas)
+
+- **Tamaño real:** 34 MB (datos 32 MB; índices 2,2 MB).
+- Cada fila conserva la fila rechazada completa en `JSONB`, la regla incumplida (`regla_id`, con índice `idx_cuarentena_regla`) y su estado (`estado`, con índice `idx_cuarentena_estado`). Todos los registros actuales están en estado `PENDIENTE`.
+- Columnas propuestas en la versión 1 y no contradichas por los resultados: `cuarentena_id` (`BIGINT`, PK), `lote_id` (FK), `regla_id` (FK), `fila_original` (`JSONB`), `estado` (`CHECK` con `PENDIENTE`, `CORREGIDO`, `DESCARTADO`, `REPROCESADO`), `fecha_registro` y `fecha_resolucion`. **Verificar nombres y tipos contra el DDL.**
+
+### 7.4 Esquema `staging`
+
+Zona de aterrizaje de los datos crudos, sin dominios ni `CHECK`, donde las filas se clasifican como válidas o inválidas **antes** de insertarse en `solardb`. PostgreSQL no envía las filas rechazadas a cuarentena de forma automática: es el proceso de staging el que las clasifica. Nombres y estructura de las tablas: **pendientes de confirmación contra el DDL**.
+
+---
+
+## 8. Almacenamiento real en disco (PostgreSQL 18)
+
+| Tabla | Total | Datos | Índices |
+|---|---:|---:|---:|
+| `solardb.lectura_telemetria` | **3.824 MB** (3,73 GB) | 3.440 MB | 384 MB |
+| `calidad.registro_cuarentena` | **34 MB** | 32 MB | 2,2 MB |
+| `solardb.registro_contexto` | **26 MB** | 17 MB | 9,3 MB |
+| Catálogos dimensionales y reglas | **< 1 MB** | < 100 KB | < 200 KB |
+| **Total SolarDB** | **≈ 3,88 GB** | | |
+
+**Dato derivado** (cálculo propio a partir de las cifras anteriores, con 1 MB = 1.048.576 bytes): 3.440 MB de datos entre 2.965.337 filas equivale a unos **1,2 KB por fila** en `lectura_telemetria`. La comparación con la estimación de diseño se hace en `09_diseno_fisico.md`.
+
+---
+
+## 9. Justificación técnica de los tipos de datos
+
+### 9.1 `NUMERIC` frente a `DOUBLE PRECISION`
 
 | Aspecto | `NUMERIC(p,s)` | `DOUBLE PRECISION` |
 |---|---|---|
 | Representación | Decimal exacto, precisión arbitraria | Punto flotante binario IEEE 754 de 64 bits |
-| Exactitud | Sin error de redondeo binario | Algunos decimales (ej. 0,1) no son representables exactamente |
+| Exactitud | Sin error de redondeo binario | Algunos decimales (ej. 0,1) no se representan exactamente |
 | Velocidad | Más lento (aritmética por software) | Más rápido (aritmética por hardware) |
-| Espacio | Variable (aprox. 2 bytes por cada 4 dígitos, más encabezado) | 8 bytes fijos |
+| Espacio | Variable | 8 bytes fijos |
 
 **Decisión en SolarDB:**
 
-- **Telemetría instantánea → `DOUBLE PRECISION`.** El valor es una medición con incertidumbre propia del sensor; la resolución de los datos observados es de una décima (ej. 57,60 V, 54,00 A), por lo que un error del orden de 10⁻¹⁵ relativo es irrelevante. Además, el origen (`REAL` en SQLite) ya es un flotante de 8 bytes, de modo que la conversión **no pierde información**, y las agregaciones sobre casi 3 millones de filas son más rápidas.
-- **Acumuladores de energía y datos nominales → `NUMERIC`.** Un acumulador suma millones de términos; el error de redondeo binario se acumula y los totales dejan de ser reproducibles. Con `NUMERIC` la suma es exacta. En el modelo actual esto aplica a las especificaciones de `dim_subsistema` (`capacidad_bateria_ah`, `voltaje_nominal_bateria_v`) y a cualquier tabla de energía acumulada que se incorpore a futuro (la tabla original `statistics` contiene contadores de energía histórica, pero está fuera del alcance actual).
-- **Consultas de energía (kWh):** al integrar potencia en el tiempo, se recomienda convertir el resultado con `CAST(... AS NUMERIC(14,3))` al final del cálculo, para presentar totales estables.
+- **Telemetría instantánea → `DOUBLE PRECISION`.** Son mediciones de sensor con incertidumbre propia; la resolución observada es de una décima (por ejemplo 57,60 V, 54,00 A), por lo que un error relativo del orden de 10⁻¹⁵ es irrelevante. El origen (`REAL` de SQLite) ya es un flotante de 8 bytes: la conversión **no pierde información**. Con 2.965.337 filas, las agregaciones son más rápidas.
+- **Magnitudes enteras → `INTEGER` o `SMALLINT`.** Las potencias (W, VA) y la resistencia de aislamiento se registran como enteros, y los porcentajes (0–110) caben en `SMALLINT`; esto ahorra espacio en una tabla con 38 variables.
+- **Datos exactos → `NUMERIC`.** Se reserva para las especificaciones nominales de `dim_subsistema` (capacidad de batería, voltaje nominal) y para presentar los totales de energía (kWh) de las consultas de negocio, ya que la suma de millones de términos en punto flotante puede arrastrar error de redondeo y volver los totales no reproducibles. Convertir el resultado final con `CAST(... AS NUMERIC(14,3))` estabiliza la presentación.
 
-### 7.2 `TIMESTAMP WITH TIME ZONE` frente a `TIMESTAMP WITHOUT TIME ZONE`
+### 9.2 `TIMESTAMP WITH TIME ZONE` frente a `TIMESTAMP WITHOUT TIME ZONE`
 
 - Los datos originales son **timestamps Unix fraccionarios en UTC** (`read_ts`).
-- `timestamptz` guarda internamente el instante en UTC y lo convierte a la zona horaria de la sesión del cliente al mostrarlo. Representa un **instante absoluto**.
-- `timestamp` (sin zona) guarda el valor literal sin información de zona: el mismo valor puede significar instantes distintos según quién lo lea.
-- **Decisión:** `timestamptz`. Los datos provienen de un sitio en Shenzhen (UTC+8) y se analizan desde Colombia (UTC-5); con `timestamptz` ambas consultas apuntan al mismo instante sin errores de interpretación, y los cálculos de diferencia de tiempo (esenciales para integrar potencia en energía con muestreo no uniforme) son correctos. La conversión se hace con `to_timestamp(read_ts)`, que devuelve `timestamptz` y conserva la parte fraccionaria.
+- `timestamptz` guarda internamente el instante en UTC y lo convierte a la zona de la sesión al mostrarlo: representa un **instante absoluto**. `timestamp` guarda el valor literal sin zona y puede interpretarse de formas distintas según quién lo lea.
+- **Decisión:** `timestamptz` para `ts_lectura`. El sitio está en Shenzhen (UTC+8) y el análisis se hace desde otra zona horaria; además, los cálculos de diferencias de tiempo (esenciales para integrar potencia en energía con una cadencia mediana de 12,58 s) deben ser correctos. La conversión `to_timestamp(read_ts)` devuelve `timestamptz` y conserva la parte fraccionaria.
+- **Verificación con datos reales:** los rangos certificados (por ejemplo, el inversor 1: 2025-07-12 13:31:35 a 2026-07-13 05:13:53) se muestran en la zona horaria de la sesión de DBeaver; hay que fijarla de forma explícita al presentar resultados.
 
-### 7.3 `JSONB` frente a `JSON`
+### 9.3 `JSONB` frente a `JSON`
 
 | Aspecto | `JSON` | `JSONB` |
 |---|---|---|
 | Almacenamiento | Texto tal cual (conserva espacios y orden de claves) | Representación binaria descompuesta |
-| Consulta | Se reanaliza (parsea) en cada acceso | Ya está procesado: más rápido |
-| Indexación | No admite índice GIN | Admite índice GIN |
+| Consulta | Se reanaliza en cada acceso | Ya procesado: más rápido |
+| Indexación | No admite índice GIN | Admite índice GIN (`idx_contexto_valor_gin`) |
 | Operadores | Limitados | Contención `@>`, existencia `?`, `?&`, `?\|` |
-| Escritura | Algo más rápida | Algo más lenta (convierte al insertar) |
 
-**Decisión:** `JSONB` para `registro_contexto.valor` y `registro_cuarentena.fila_original`. El campo `value` de OpenCEM es semiestructurado y se filtra por contenido (ej. por `source`, que toma 7 valores distintos). Con `JSONB` se puede crear un índice GIN y usar `@>` para filtrar sin recorrer los 25.178 registros. La pérdida del orden original de las claves y de los espacios no afecta al análisis. El costo extra en escritura es despreciable en una carga por lotes.
+**Decisión:** `JSONB` en `registro_contexto.valor` (25.178 registros semiestructurados con el campo `source`), en `registro_cuarentena` (copia de la fila rechazada) y en las 4 columnas `*_reserve` de `lectura_telemetria`. Permite filtrar por contenido con un índice GIN. La pérdida del orden de claves y de los espacios no afecta al análisis, y el costo extra en escritura es despreciable en una carga por lotes.
 
-### 7.4 `BIGINT` frente a `INTEGER`
+### 9.4 `BIGINT` frente a `INTEGER`
 
 | Tipo | Tamaño | Rango aproximado |
 |---|---|---|
@@ -388,26 +403,24 @@ Los dominios centralizan el tipo y la restricción de una magnitud física. Si c
 | `INTEGER` | 4 bytes | ±2,1 × 10⁹ |
 | `BIGINT` | 8 bytes | ±9,2 × 10¹⁸ |
 
-- **Llaves subrogadas de hechos (`lectura_id`, `contexto_id`, `cuarentena_id`) → `BIGINT`.** Con 2.989.759 lecturas, `INTEGER` alcanzaría de sobra hoy (usa ~0,14 % de su rango). Se elige `BIGINT` por crecimiento: el muestreo es continuo (cada ~12,6 s por inversor) y la tabla sigue creciendo; migrar el tipo de una llave primaria con millones de filas más adelante es costoso. El sobrecosto es de 4 bytes por fila, es decir, unos 12 MB para 3 millones de filas (el índice de la PK también crece), un costo aceptable.
-- **Contadores acumulativos de energía → `NUMERIC`** (no `BIGINT`), porque son magnitudes decimales (kWh); si se almacenaran en Wh como enteros, `BIGINT` sería suficiente.
-- **Catálogos (`sitio_id`, `subsistema_id`, `inversor_id`, `variable_id`, `unidad_id`) → `SMALLINT`.** Tienen pocas filas (1, 2, 2, 30, 9) y reducen el tamaño de las llaves foráneas en la tabla de hechos.
+- **`lectura_id` → `BIGINT`.** Con 2.965.337 filas, `INTEGER` alcanzaría (usa ~0,14 % de su rango). Se eligió `BIGINT` por crecimiento: el muestreo es continuo y cambiar el tipo de una llave primaria con millones de filas es costoso. El sobrecosto es de 4 bytes por fila (≈ 12 MB en total, poco frente a los 3.824 MB de la tabla). Lo mismo aplica a `contexto_id`.
+- **Catálogos → `SMALLINT`** (1, 2, 2, 38 o más, 7 filas): llaves foráneas más pequeñas.
 - **`lote_id` → `INTEGER`:** el número de lotes es pequeño.
+- **Contadores de energía:** son magnitudes decimales (kWh); si se almacenaran en Wh como enteros, `BIGINT` sería suficiente.
 
 ---
 
-## 8. Resumen de detalles pendientes de confirmación por el coordinador
+## 10. Notas de consistencia y pendientes
 
-1. Formato ancho (una columna por variable) o formato largo para `lectura_telemetria`.
-2. Valores definitivos de `zona_horaria`, y número y contenido de `cat_unidad_medida` y `cat_variable_fisica`.
-3. Existencia de duplicados `(inversor, read_ts)` en el origen, para confirmar el `UNIQUE (inversor_id, ts_lectura)`.
-4. Las 5 columnas reales de la tabla `context` y su mapeo a `registro_contexto`.
-5. Definición final de las reglas de `calidad.regla_calidad` y de sus límites (en especial temperatura).
-6. Si las tablas `status`, `totals`, `settings`, `specs`, `statistics` y `fault_history` se incorporan al modelo.
-7. Estructura final de `lote_carga` y `registro_cuarentena`.
-8. Cantidad final de filas migradas (el contexto del proyecto menciona «más de un millón de lecturas» para la demostración; el origen tiene 2.989.759).
+1. **Diferencia en la regla P > S.** El diagnóstico de la Fase 1 reportaba **3.811** filas con P > S; la migración certificó **24.375** en `R_P_MAYOR_S`. Este documento usa la cifra certificada. **Pendiente: pedir al coordinador la explicación** (por ejemplo, que la regla use otro criterio o tolerancia que la del diagnóstico), porque el profesor podría preguntarlo.
+2. **8 variables nuevas (†):** `invcurra`, `normalloadw_a`, `linepowerva_a`, `generatedpowerp_a`, `generatedpowers_a`, `generatedpowerq_a`, `temper3` y `temper4`. Confirmar su unidad y descripción en `column_dictionary.json` y completar el rango observado.
+3. **Columnas `*_reserve`:** confirmar qué contienen.
+4. **Sexta columna de `registro_contexto`** y estructura exacta de `lote_carga`, `registro_cuarentena`, los catálogos y las tablas de `staging`: verificar contra el DDL.
+5. **Mínima histórica en Shenzhen (~0 °C):** es el argumento del coordinador para `R_TEMP1_IMPOSIBLE`; si el informe lo cita, debe apoyarse en una fuente.
+6. El archivo `docs/11_resultados_migracion.md`, mencionado como fuente de las métricas, **no estaba adjunto**; las cifras de este documento provienen del texto del prompt de la Ronda 2. Conviene cotejarlas con ese archivo.
 
 ---
 
-## 9. Reglas de protección del repositorio
+## 11. Protección del repositorio
 
-Este documento no contiene contraseñas, tokens ni cadenas de conexión. Los scripts DDL que se versionen en el repositorio deben respetar lo mismo (el detalle está en `docs/14_seguridad_y_privacidad.md`).
+Este documento no contiene contraseñas, tokens ni cadenas de conexión. Los scripts del repositorio no deben incluir credenciales; el detalle está en `docs/14_seguridad_y_privacidad.md`.
